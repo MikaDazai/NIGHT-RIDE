@@ -12,7 +12,7 @@ type YouTubePlayerEvent = { target: YouTubePlayerApi; data: number };
 type YouTubeApi = { Player: new (element: HTMLIFrameElement, options: { events: { onReady: (event: YouTubePlayerEvent) => void; onStateChange: (event: YouTubePlayerEvent) => void; onAutoplayBlocked?: () => void; onError?: () => void } }) => YouTubePlayerApi };
 declare global { interface Window { YT?: YouTubeApi; onYouTubeIframeAPIReady?: () => void } }
 
-type RideState = { speed: number; steer: number; lateralVelocity: number; distance: number; throttle: boolean; brake: boolean; autoRide: boolean };
+type RideState = { speed: number; steer: number; steeringAngle: number; lateralVelocity: number; distance: number; throttle: boolean; brake: boolean; autoRide: boolean };
 type BikeType = 'Sport' | 'Naked' | 'Touring' | 'Retro';
 type Motorcycle = { id: string; name: string; category: BikeType; topSpeed: number; acceleration: number; braking: number; steering: number; color: string; description: string };
 const motorcycleCatalog: Motorcycle[] = [
@@ -52,7 +52,7 @@ function Bike({ ride, cameraMode, color, bikeType, bikeModelId, quality }: BikeP
     root.current.position.x = THREE.MathUtils.damp(root.current.position.x, s.steer, 8, dt);
     root.current.rotation.z = THREE.MathUtils.damp(root.current.rotation.z, -s.lateralVelocity * .035, 5, dt);
     root.current.position.y = 0.035 + Math.sin(s.distance * 0.23) * Math.min(0.018, s.speed / 10000);
-    if (front.current) front.current.rotation.y = -s.steer * 0.22;
+    if (front.current) front.current.rotation.y = -s.steeringAngle * 0.36;
     const spin = s.speed * dt * 0.18;
     if (wheelFront.current) wheelFront.current.rotation.y -= spin;
     if (wheelBack.current) wheelBack.current.rotation.y -= spin;
@@ -197,13 +197,14 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
   const sideMarkGeometry = useMemo(() => new THREE.BoxGeometry(.075, .018, 2.2), []);
   const centerMarkMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#e3d4bc', emissive: '#879bad', emissiveIntensity: .2, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }), []);
   const sideMarkMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#c7d1d7', emissive: '#879bad', emissiveIntensity: .2, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }), []);
-  // 804 m ahead plus 60 m behind gives the camera a long, pre-generated ring buffer.
-  const segments = useMemo(() => Array.from({ length: 72 }, (_, i) => ({ z: 60 - i * segmentLength, seed: i })), []);
+  // The 1,152 m ring covers 60 m behind and over 1,000 m ahead of the rider.
+  const segments = useMemo(() => Array.from({ length: 96 }, (_, i) => ({ z: 60 - i * segmentLength, seed: i })), []);
+  const ringLength = segments.length * segmentLength;
   const batchZ = useMemo(() => segments.map(segment => segment.z), [segments]);
   const batchActive = useMemo(() => Array.from({ length: segments.length }, () => false), [segments]);
   const batchInitialized = useRef(false);
-  const lamps = useMemo(() => Array.from({ length: 140 }, (_, i) => ({ z: -i * 6 - 5, side: i % 2 ? -1 : 1 })), []);
-  const trees = useMemo(() => Array.from({ length: 180 }, (_, i) => ({ z: -(i * 5 + 2), side: i % 2 ? -1 : 1, h: 2.1 + (i * 17 % 9) / 10 })), []);
+  const lamps = useMemo(() => Array.from({ length: ringLength / 6 }, (_, i) => ({ z: -i * 6 - 5, side: i % 2 ? -1 : 1 })), [ringLength]);
+  const trees = useMemo(() => Array.from({ length: ringLength / 4.8 }, (_, i) => ({ z: -(i * 4.8 + 2), side: i % 2 ? -1 : 1, h: 2.1 + (i * 17 % 9) / 10 })), [ringLength]);
   const lampZ = useMemo(() => lamps.map(lamp => lamp.z), [lamps]);
   const treeZ = useMemo(() => trees.map(tree => tree.z), [trees]);
   const lampActive = useMemo(() => Array.from({ length: lamps.length }, () => false), [lamps]);
@@ -214,32 +215,35 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
   useFrame((_, dt) => {
     // Recycle each prebuilt tile/prop only after it has passed well behind the camera.
     const travel = ride.current.speed * dt * .12;
-    const aheadBuffer = THREE.MathUtils.clamp(600 + ride.current.speed * .9, 600, 800);
-    const recenterThreshold = 1000;
-    const resetWorldRoot = (root: THREE.Group | null) => {
-      if (!root) return;
-      const offset = Math.round(root.position.z / recenterThreshold) * recenterThreshold;
-      if (Math.abs(offset) >= recenterThreshold) root.position.z -= offset;
-    };
+    const aheadBuffer = THREE.MathUtils.clamp(900 + ride.current.speed * .4, 900, 1000);
     if (batchRoot.current) {
       batchRoot.current.position.z += travel;
-      resetWorldRoot(batchRoot.current);
     }
     if (propsRoot.current) {
       propsRoot.current.position.z += travel;
-      resetWorldRoot(propsRoot.current);
+    }
+    const recenterOffset = batchRoot.current ? Math.floor(batchRoot.current.position.z / ringLength) * ringLength : 0;
+    if (recenterOffset > 0) {
+      if (batchRoot.current) batchRoot.current.position.z -= recenterOffset;
+      if (propsRoot.current) propsRoot.current.position.z -= recenterOffset;
+      for (let i = 0; i < batchZ.length; i++) batchZ[i] += recenterOffset;
+      for (let i = 0; i < lampZ.length; i++) lampZ[i] += recenterOffset;
+      for (let i = 0; i < treeZ.length; i++) treeZ[i] += recenterOffset;
+      batchInitialized.current = false;
+      propsInitialized.current = false;
     }
     for (const segment of segmentRefs.current) if (segment) {
       segment.position.z += travel;
-      const offset = Math.round(segment.position.z / recenterThreshold) * recenterThreshold;
-      if (Math.abs(offset) >= recenterThreshold) segment.position.z -= offset;
-      if (segment.position.z > 72) segment.position.z -= segments.length * segmentLength;
+      if (segment.position.z > 72) segment.position.z -= Math.ceil((segment.position.z - 72) / ringLength) * ringLength;
       segment.visible = segment.position.z >= -aheadBuffer - segmentLength && segment.position.z <= 72;
     }
     let instanceMatricesDirty = !batchInitialized.current;
     for (let i = 0; i < segments.length; i++) {
       let z = batchZ[i] + (batchRoot.current?.position.z ?? 0), recycled = false;
-      if (z > 72) { batchZ[i] -= segments.length * segmentLength; z -= segments.length * segmentLength; recycled = true; }
+      if (z > 72) {
+        const recycleDistance = Math.ceil((z - 72) / ringLength) * ringLength;
+        batchZ[i] -= recycleDistance; z -= recycleDistance; recycled = true;
+      }
       const active = z >= -aheadBuffer - segmentLength && z <= 72;
       if (recycled || active !== batchActive[i] || !batchInitialized.current) {
         const localZ = batchZ[i], y = active ? 0 : -1000;
@@ -268,7 +272,8 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
     let lampDirty = !propsInitialized.current, treeDirty = !propsInitialized.current || treeModeChanged;
     for (let i = 0; i < lamps.length; i++) {
       let z = lampZ[i] + (propsRoot.current?.position.z ?? 0), recycled = false;
-      if (z > 72) { lampZ[i] -= lamps.length * 6; z -= lamps.length * 6; recycled = true; }
+      if (z > 72) { lampZ[i] -= Math.ceil((z - 72) / ringLength) * ringLength; recycled = true; }
+      z = lampZ[i] + (propsRoot.current?.position.z ?? 0);
       const active = z >= -aheadBuffer;
       if (recycled || active !== lampActive[i] || !propsInitialized.current) {
         const lamp = lamps[i], localZ = lampZ[i], y = active ? 0 : -1000;
@@ -279,7 +284,8 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
     }
     for (let i = 0; i < trees.length; i++) {
       let z = treeZ[i] + (propsRoot.current?.position.z ?? 0), recycled = false;
-      if (z > 72) { treeZ[i] -= trees.length * 5; z -= trees.length * 5; recycled = true; }
+      if (z > 72) { treeZ[i] -= Math.ceil((z - 72) / ringLength) * ringLength; recycled = true; }
+      z = treeZ[i] + (propsRoot.current?.position.z ?? 0);
       const tree = trees[i], x = tree.side * (13 + (i % 4) * .8), inBuffer = z >= -aheadBuffer;
       if (recycled || inBuffer !== treeActive[i] || treeModeChanged || !propsInitialized.current) {
         const localZ = treeZ[i], visibleForest = forest && inBuffer, visibleCity = !forest && inBuffer;
@@ -554,7 +560,7 @@ function createLofiLoop(context: AudioContext, initialGenre: MusicGenre, output:
 }
 
 function App() {
-  const ride = useRef<RideState>({ speed: 0, steer: 0, lateralVelocity: 0, distance: 0, throttle: false, brake: false, autoRide: false });
+  const ride = useRef<RideState>({ speed: 0, steer: 0, steeringAngle: 0, lateralVelocity: 0, distance: 0, throttle: false, brake: false, autoRide: false });
   const speedReadout = useRef<HTMLSpanElement>(null);
   const speedMeter = useRef<HTMLElement>(null);
   const engineLoadReadout = useRef<HTMLElement>(null);
@@ -828,10 +834,14 @@ function App() {
       const decel = brake && playing ? bike.braking : acc && playing ? 0 : auto ? 1.3 : 13;
       r.speed = Math.max(0, Math.min(auto ? cruiseMax : bike.topSpeed, r.speed + (accel - decel) * dt));
       const manualSteer = (left ? -1 : 0) + (right ? 1 : 0);
+      const steeringTarget = auto ? THREE.MathUtils.clamp((autoLane - r.steer) / 2.4, -1, 1) : manualSteer;
+      r.steeringAngle = THREE.MathUtils.damp(r.steeringAngle, THREE.MathUtils.clamp(steeringTarget, -1, 1), steeringTarget === 0 ? 12 : 8, dt);
       const targetLateral = auto ? THREE.MathUtils.clamp((autoLane - r.steer) * .72, -2.4, 2.4) : manualSteer * (2.4 + r.speed * .018) * bike.steering;
-      r.lateralVelocity = THREE.MathUtils.damp(r.lateralVelocity, targetLateral, auto ? 1.6 : 4.6, dt);
+      if (auto || manualSteer !== 0) r.lateralVelocity = THREE.MathUtils.damp(r.lateralVelocity, targetLateral, auto ? 1.6 : 4.6, dt);
+      else r.lateralVelocity += (-r.steer * 16 - r.lateralVelocity * 8) * dt;
       r.steer = THREE.MathUtils.clamp(r.steer + r.lateralVelocity * dt, -8.35, 8.35);
       if (Math.abs(r.steer) >= 8.34) r.lateralVelocity = 0;
+      if (Math.abs(r.steer) < .025 && Math.abs(r.lateralVelocity) < .08) { r.steer = 0; r.lateralVelocity = 0; }
       r.distance += r.speed * dt; r.throttle = !!acc || auto; r.brake = !!brake || (auto && !laneClear && obstacleDistance < 18);
       uiElapsed += dt;
       if (uiElapsed > .1) {

@@ -562,6 +562,8 @@ function App() {
   const autoNoticeTimer = useRef<number | null>(null);
   const trafficRef = useRef<TrafficSnapshot>([]);
   const selectedBike = motorcycleCatalog.find(model => model.id === bikeModelId) ?? motorcycleCatalog[0];
+  const [displaySpeed, setDisplaySpeed] = useState(0);
+  const [displayLoad, setDisplayLoad] = useState(0);
   const [musicOn, setMusicOn] = useState(false);
   const [musicMuted, setMusicMuted] = useState(false);
   const [audioStatus, setAudioStatus] = useState<'locked' | 'ready' | 'unavailable'>('locked');
@@ -629,7 +631,6 @@ function App() {
   screenRef.current = screen;
   actionsRef.current = { setScreen, setCameraMode, setHud, setAutoRide, toggleAutoRide };
   useEffect(() => {
-    if (!youtubePanelOpen) return;
     setYoutubeState('loading');
     const initializePlayer = () => {
       if (!window.YT?.Player || !youtubeFrameRef.current || youtubePlayerRef.current) return;
@@ -637,7 +638,7 @@ function App() {
         onReady: ({ target }) => { youtubePlayerRef.current = target; youtubeReadyRef.current = true; setYoutubeLoaded(true); setYoutubeState('ready'); target.setVolume(Math.round(musicModeRef.current.musicVolume * musicModeRef.current.masterVolume * 100)); if (musicModeRef.current.musicMuted) target.mute(); else target.unMute(); if (musicModeRef.current.musicOn && !musicModeRef.current.hasLocalTracks) requestYoutubePlayback(); },
         onStateChange: ({ data, target }) => { if (data === 1) { if (!musicModeRef.current.hasLocalTracks) { setYoutubeState('ready'); setMusicOn(true); } else target.pauseVideo(); } else if (data === 2) setMusicOn(false); else if (data === 0) { setYoutubeState('blocked'); setMusicOn(true); } },
         onAutoplayBlocked: () => setYoutubeState('blocked'),
-        onError: () => { setYoutubeState('error'); setMusicOn(true); setYoutubePanelOpen(false); },
+        onError: () => { setYoutubeState('error'); setMusicOn(true); },
       } });
     };
     if (window.YT?.Player) initializePlayer();
@@ -649,7 +650,7 @@ function App() {
       }
     }
     return () => { youtubeReadyRef.current = false; youtubePlayerRef.current?.destroy(); youtubePlayerRef.current = null; };
-  }, [youtubePanelOpen]);
+  }, []);
   useEffect(() => {
     if (!youtubePanelOpen || tracks.length || !youtubeReadyRef.current) return;
     const player = youtubePlayerRef.current;
@@ -690,23 +691,40 @@ function App() {
     const audio = audioRef.current;
     if (!audio) return;
     let objectUrl = '';
-    if (tracks.length) { objectUrl = URL.createObjectURL(tracks[trackIndex]); audio.src = objectUrl; audio.volume = musicVolume * masterVolume; }
+    if (tracks.length) {
+      objectUrl = URL.createObjectURL(tracks[trackIndex]);
+      audio.src = objectUrl;
+      audio.volume = musicVolume * masterVolume;
+    } else {
+      audio.src = '';
+      audio.pause();
+    }
     audio.muted = musicMuted;
-    if (tracks.length && musicOn) void audio.play().catch(() => setMusicOn(false)); else audio.pause();
+    if (tracks.length && musicOn) void audio.play().catch(() => setMusicOn(false)); else if (tracks.length) audio.pause();
     if (lofiGainRef.current) lofiGainRef.current.gain.setTargetAtTime(musicOn && !musicMuted && !tracks.length && (!youtubePanelOpen || youtubeState === 'blocked' || youtubeState === 'error') ? musicVolume * .72 : 0, audioContextRef.current?.currentTime ?? 0, .8);
-    if (!tracks.length && youtubePanelOpen) {
+    if (!tracks.length && youtubeReadyRef.current && youtubePlayerRef.current) {
       youtubeCommand('setVolume', [Math.round(musicVolume * masterVolume * 100)]);
       youtubeCommand(musicMuted ? 'mute' : 'unMute');
-      if (musicOn) { if (!musicMuted) youtubeCommand('unMute'); youtubeCommand('playVideo'); } else youtubeCommand('pauseVideo');
-    } else youtubeCommand('pauseVideo');
-    return () => { audio.pause(); if (objectUrl) URL.revokeObjectURL(objectUrl); };
+      if (musicOn && !musicMuted) {
+        youtubeCommand('playVideo');
+      } else {
+        youtubeCommand('pauseVideo');
+      }
+    }
+    return () => {
+      audio.pause();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
   }, [tracks, trackIndex, musicOn, musicMuted, musicVolume, masterVolume, musicGenre, youtubePanelOpen, youtubeLoaded, youtubeState]);
   useEffect(() => {
     const now = audioContextRef.current?.currentTime ?? 0;
     masterGainRef.current?.gain.setTargetAtTime(masterVolume, now, .12);
     if (audioRef.current && tracks.length) audioRef.current.volume = musicVolume * masterVolume;
-    youtubeCommand('setVolume', [Math.round(musicVolume * masterVolume * 100)]);
-  }, [musicVolume, masterVolume, tracks]);
+    if (youtubeReadyRef.current || youtubeFrameRef.current) {
+      youtubeCommand('setVolume', [Math.round(musicVolume * masterVolume * 100)]);
+      youtubeCommand(musicMuted ? 'mute' : 'unMute');
+    }
+  }, [musicVolume, masterVolume, tracks, musicMuted]);
   const startAudio=()=>{
     try {
       const audioWindow = window as typeof window & { webkitAudioContext?: typeof AudioContext };
@@ -804,9 +822,10 @@ function App() {
       uiElapsed += dt;
       if (uiElapsed > .1) {
         const shownSpeed = Math.round(r.speed);
-        if (speedReadout.current) speedReadout.current.textContent = String(shownSpeed);
+        const shownLoad = Math.round(Math.min(100, shownSpeed * .44 + (keys.w ? 16 : 0)));
+        setDisplaySpeed(shownSpeed);
+        setDisplayLoad(shownLoad);
         if (speedMeter.current) speedMeter.current.style.width = `${Math.min(100, shownSpeed / 2.1)}%`;
-        if (engineLoadReadout.current) engineLoadReadout.current.textContent = `${Math.round(Math.min(100, shownSpeed * .44 + (keys.w ? 16 : 0)))}%`;
         const context = audioContextRef.current;
         if (context) {
           const now = context.currentTime;
@@ -825,7 +844,7 @@ function App() {
     raf = requestAnimationFrame(tick); return () => cancelAnimationFrame(raf);
   }, [bikeModelId, engineVolume, environmentVolume, weather]);
   useEffect(() => { if (screen !== 'ride') keysRef.current = {}; }, [screen]);
-  const openSettings=()=>{if(youtubePanelOpen){youtubeCommand('pauseVideo');setYoutubePanelOpen(false);setYoutubeState('blocked')}setSettingsReturn(screen==='ride'?'ride':'menu');setScreen('settings')};
+  const openSettings=()=>{setSettingsReturn(screen==='ride'?'ride':'menu');setScreen('settings')};
   const begin=()=>{startAudio();setMusicOn(true);if(!tracks.length){setYoutubePanelOpen(true);setYoutubeState('loading')}setScreen('ride')};
   const changeGenre=(genre: MusicGenre)=>{setMusicGenre(genre);if(!tracks.length){startAudio();setMusicOn(true);setYoutubePanelOpen(true);setYoutubeState('loading')}};
   const stepTrack=(direction:number)=>{if(tracks.length){setTrackIndex(i=>(i+direction+tracks.length)%tracks.length);setMusicOn(true)}};
@@ -840,7 +859,7 @@ function App() {
     {debugKeys && hud && <div style={{ position: 'absolute', zIndex: 4, top: 14, right: 18, padding: '7px 10px', background: '#09111dcc', border: '1px solid #ffffff30', color: '#cfdbeb', font: '10px monospace' }}>KEYS {Object.keys(keysRef.current).filter(k => keysRef.current[k]).join(' + ') || '—'}</div>}
     {screen==='menu' && <section className="menu overlay"><div className="eyebrow">A NIGHT RIDE EXPERIENCE</div><h1>NIGHT<span>RIDE</span></h1><p className="tagline">Find your quiet in the distance.</p><button className="primary" onClick={begin}>Start riding <span>GO</span></button><div className="menuLinks"><button onClick={openSettings}>Garage & ride setup</button><button onClick={openSettings}>Music & settings</button></div><div className="menuFoot">PROCEDURAL WORLDS · YOUR OWN SOUNDTRACK</div></section>}
     {(screen==='ride'||screen==='pause') && hud && <>
-      <aside className="speed"><div className="speedNum"><span ref={speedReadout}>0</span><small> KM/H</small></div><div className="meter"><i ref={speedMeter} style={{width:'0%'}} /></div><div className="rpm"><span>ENGINE LOAD</span><b ref={engineLoadReadout}>0%</b></div></aside>
+      <aside className="speed"><div className="speedNum"><span ref={speedReadout}>{displaySpeed}</span><small> KM/H</small></div><div className="meter"><i ref={speedMeter} style={{width:'0%'}} /></div><div className="rpm"><span>ENGINE LOAD</span><b ref={engineLoadReadout}>{displayLoad}%</b></div></aside>
       <nav className="minimalControls" aria-label="Ride controls">
         <span className="brand">NIGHT<span>RIDE</span></span>
         <button onClick={()=>setCameraMode(v=>v==='chase'?'cockpit':'chase')}>CAMERA <b>{cameraMode==='chase'?'3RD':'1ST'}</b></button>
@@ -866,7 +885,7 @@ function App() {
     </>}
     {screen==='pause' && hud && <section className="modal overlay"><div className="eyebrow">RIDE PAUSED</div><h2>Take your time.</h2><button className="primary" onClick={()=>setScreen('ride')}>Continue ride</button><button className="ghost" onClick={()=>setScreen('menu')}>Main menu</button></section>}
     {screen==='settings' && <section className="settings overlay"><button className="close" onClick={()=>setScreen(settingsReturn)}>BACK</button><div className="eyebrow">PERSONALIZE YOUR RIDE</div><h2>Ride setup</h2><label>Environment<select value={environment} onChange={e=>setEnvironment(e.target.value)}>{['Neon City','Mountain Pass','Forest Highway','Coastal Road'].map(x=><option key={x}>{x}</option>)}</select></label><label>Weather<select value={weather} onChange={e=>setWeather(e.target.value)}>{['Clear night','Light Rain','Heavy Rain','Fog','Thunderstorm'].map(x=><option key={x}>{x}</option>)}</select></label><label>Time<select value={timeOfDay} onChange={e=>setTimeOfDay(e.target.value)}>{['Deep night','Blue hour','Sunset','Sunrise'].map(x=><option key={x}>{x}</option>)}</select></label><label>Graphics<select value={quality} onChange={e=>setQuality(e.target.value)}>{['Low','Medium','High'].map(x=><option key={x}>{x}</option>)}</select></label><label>Traffic<select value={trafficDensity} onChange={e=>setTrafficDensity(e.target.value as typeof trafficDensity)}>{['Off','Low','Medium','High'].map(x=><option key={x}>{x}</option>)}</select></label><label>Camera<select value={cameraMode} onChange={e=>setCameraMode(e.target.value as 'chase'|'cockpit')}><option value="chase">Third person</option><option value="cockpit">First person</option></select></label><label>Motorcycle<select value={bikeModelId} onChange={e=>{const model=motorcycleCatalog.find(x=>x.id===e.target.value);if(model){setBikeModelId(model.id);setBikeType(model.category);setColor(model.color)}}}>{(["Sport","Naked","Touring","Retro"] as BikeType[]).map(category=><optgroup key={category} label={category}>{motorcycleCatalog.filter(model=>model.category===category).map(model=><option key={model.id} value={model.id}>{model.name}</option>)}</optgroup>)}</select></label><div className="bikeInfo"><strong>{selectedBike.name} · {selectedBike.category}</strong><small>Top {selectedBike.topSpeed} km/h · Accel {selectedBike.acceleration} · Handling {selectedBike.steering.toFixed(2)}</small><small>{selectedBike.description}</small></div><label>Bike paint<input type="color" value={color} onChange={e=>setColor(e.target.value)} /></label><div className="audioBox"><span>{youtubeTracks[musicGenre].title+' · YOUTUBE'}</span><label>Generated genre<select value={musicGenre} onChange={e=>setMusicGenre(e.target.value as MusicGenre)}>{(["Lo-Fi","Synthwave","Phonk"] as MusicGenre[]).map(genre=><option key={genre}>{genre}</option>)}</select></label><input type="file" accept="audio/*" multiple onChange={e=>{const files=Array.from(e.target.files ?? []); if(files.length){setTracks(v=>[...v,...files]);setTrackIndex(tracks.length);setMusicOn(true);}}}/>{tracks.map((track,i)=><div className="trackRow" key={`${track.name}-${i}`}><button className="trackSelect" onClick={()=>{setTrackIndex(i);setMusicOn(true)}}>{i===trackIndex?"Now playing: ":""}{track.name}</button><button className="removeTrack" onClick={()=>{setTracks(v=>v.filter((_,j)=>j!==i));if(i===trackIndex){setMusicOn(false);setTrackIndex(0)}else if(i<trackIndex)setTrackIndex(j=>j-1)}}>Remove</button></div>)}<div className="trackNav"><button onClick={()=>stepTrack(-1)} disabled={!tracks.length}>Previous</button><button onClick={toggleMusicPlayback}>{musicOn?"Pause":"Play"}</button><button onClick={()=>stepTrack(1)} disabled={!tracks.length}>Next</button></div><label className="seek">Seek<input type="range" min="0" max={trackDuration||1} step=".25" value={Math.min(trackTime,trackDuration||1)} disabled={!tracks.length||!trackDuration} onChange={e=>{const t=Number(e.target.value);setTrackTime(t);if(audioRef.current)audioRef.current.currentTime=t}}/><small>{Math.floor(trackTime/60)}:{String(Math.floor(trackTime%60)).padStart(2,"0")} / {Math.floor(trackDuration/60)}:{String(Math.floor(trackDuration%60)).padStart(2,"0")}</small></label><small>{musicGenre==='Lo-Fi'&&!tracks.length?'The YouTube audio source runs in the background; if the browser blocks it, the built-in Lo-Fi synthesizer is used.':'Imported audio stays on this device until you close the page.'}</small><label className="vol">Master volume<input type="range" min="0" max="1" step=".01" value={masterVolume} onChange={e=>setMasterVolume(Number(e.target.value))}/></label><label className="vol">Music volume<input type="range" min="0" max="1" step=".01" value={musicVolume} onChange={e=>setMusicVolume(Number(e.target.value))}/></label><label className="vol">Engine volume<input type="range" min="0" max="1" step=".01" value={engineVolume} onChange={e=>setEngineVolume(Number(e.target.value))}/></label><label className="vol">Environment volume<input type="range" min="0" max="1" step=".01" value={environmentVolume} onChange={e=>setEnvironmentVolume(Number(e.target.value))}/></label></div><div className="controlsNote">W/^ accelerate · S/v brake · A/D steer · C camera · H HUD · Esc pause</div><button className="primary" onClick={()=>setScreen(settingsReturn)}>Done</button></section>}
-    {!tracks.length && <div className="youtubeAudioHost" aria-hidden="true"><iframe ref={youtubeFrameRef} title="Background music audio" width="200" height="200" tabIndex={-1} src={`https://www.youtube.com/embed/${youtubeTracks[musicGenre].id}?enablejsapi=1&controls=0&playsinline=1&loop=1&playlist=${youtubeTracks[musicGenre].id}&origin=${encodeURIComponent(window.location.origin)}`} allow="autoplay; encrypted-media" referrerPolicy="strict-origin-when-cross-origin" onLoad={()=>setYoutubeLoaded(true)} /></div>}
+    <div className="youtubeAudioHost" aria-hidden="true"><iframe ref={youtubeFrameRef} title="Background music audio" width="200" height="200" tabIndex={-1} src={`https://www.youtube.com/embed/${youtubeTracks[musicGenre].id}?enablejsapi=1&controls=0&playsinline=1&loop=1&playlist=${youtubeTracks[musicGenre].id}&origin=${encodeURIComponent(window.location.origin)}`} allow="autoplay; encrypted-media" referrerPolicy="strict-origin-when-cross-origin" onLoad={()=>setYoutubeLoaded(true)} /></div>
     <audio ref={audioRef} onLoadedMetadata={e=>{setTrackDuration(e.currentTarget.duration||0);setTrackTime(0)}} onTimeUpdate={e=>setTrackTime(e.currentTarget.currentTime)} onEnded={()=>stepTrack(1)} />
     {hud && <div className="caption">W / UP ACCELERATE · S / DOWN BRAKE · A/D STEER · C CAMERA · P AUTO-RIDE · H HUD</div>}
   </main>;

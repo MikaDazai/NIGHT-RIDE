@@ -838,10 +838,9 @@ function App() {
       r.steeringAngle = THREE.MathUtils.damp(r.steeringAngle, THREE.MathUtils.clamp(steeringTarget, -1, 1), steeringTarget === 0 ? 12 : 8, dt);
       const targetLateral = auto ? THREE.MathUtils.clamp((autoLane - r.steer) * .72, -2.4, 2.4) : manualSteer * (2.4 + r.speed * .018) * bike.steering;
       if (auto || manualSteer !== 0) r.lateralVelocity = THREE.MathUtils.damp(r.lateralVelocity, targetLateral, auto ? 1.6 : 4.6, dt);
-      else r.lateralVelocity += (-r.steer * 16 - r.lateralVelocity * 8) * dt;
+      else r.lateralVelocity = 0;
       r.steer = THREE.MathUtils.clamp(r.steer + r.lateralVelocity * dt, -8.35, 8.35);
       if (Math.abs(r.steer) >= 8.34) r.lateralVelocity = 0;
-      if (Math.abs(r.steer) < .025 && Math.abs(r.lateralVelocity) < .08) { r.steer = 0; r.lateralVelocity = 0; }
       r.distance += r.speed * dt; r.throttle = !!acc || auto; r.brake = !!brake || (auto && !laneClear && obstacleDistance < 18);
       uiElapsed += dt;
       if (uiElapsed > .1) {

@@ -366,7 +366,7 @@ function World({ ride, cameraMode, color, bikeType, bikeModelId, environment, we
     if (!c) return;
     const bikeX = ride.current.steer;
     const chase = cameraMode === 'chase';
-    lookTarget.set(bikeX - ride.current.lateralVelocity * (chase ? .018 : .006), (chase ? 2.55 : 1.47) + Math.sin(ride.current.distance * .42) * Math.min(.009, ride.current.speed / 18000), chase ? 6.4 : -.24);
+    lookTarget.set(bikeX - ride.current.lateralVelocity * (chase ? .018 : .006), (chase ? 2.55 : 1.68) + Math.sin(ride.current.distance * .42) * Math.min(.009, ride.current.speed / 18000), chase ? 6.4 : -1.35);
     c.position.lerp(lookTarget, 1 - Math.exp(-dt * 3.2));
     c.lookAt(bikeX, chase ? .88 : 1.32, chase ? -5.5 : -16);
     c.fov = THREE.MathUtils.damp(c.fov, 67 + ride.current.speed * .11, 2, dt);

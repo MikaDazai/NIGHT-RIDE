@@ -215,10 +215,24 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
     // Recycle each prebuilt tile/prop only after it has passed well behind the camera.
     const travel = ride.current.speed * dt * .12;
     const aheadBuffer = THREE.MathUtils.clamp(600 + ride.current.speed * .9, 600, 800);
-    if (batchRoot.current) batchRoot.current.position.z += travel;
-    if (propsRoot.current) propsRoot.current.position.z += travel;
+    const recenterThreshold = 1000;
+    const resetWorldRoot = (root: THREE.Group | null) => {
+      if (!root) return;
+      const offset = Math.round(root.position.z / recenterThreshold) * recenterThreshold;
+      if (Math.abs(offset) >= recenterThreshold) root.position.z -= offset;
+    };
+    if (batchRoot.current) {
+      batchRoot.current.position.z += travel;
+      resetWorldRoot(batchRoot.current);
+    }
+    if (propsRoot.current) {
+      propsRoot.current.position.z += travel;
+      resetWorldRoot(propsRoot.current);
+    }
     for (const segment of segmentRefs.current) if (segment) {
       segment.position.z += travel;
+      const offset = Math.round(segment.position.z / recenterThreshold) * recenterThreshold;
+      if (Math.abs(offset) >= recenterThreshold) segment.position.z -= offset;
       if (segment.position.z > 72) segment.position.z -= segments.length * segmentLength;
       segment.visible = segment.position.z >= -aheadBuffer - segmentLength && segment.position.z <= 72;
     }

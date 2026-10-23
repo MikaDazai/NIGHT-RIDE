@@ -1,8 +1,10 @@
+type CameraMode = 'chase' | 'cockpit' | 'cinematic';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { PerspectiveCamera, Stars } from '@react-three/drei';
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import './style.css';
 
 type YouTubePlayerApi = {
@@ -12,7 +14,7 @@ type YouTubePlayerEvent = { target: YouTubePlayerApi; data: number };
 type YouTubeApi = { Player: new (element: HTMLIFrameElement, options: { events: { onReady: (event: YouTubePlayerEvent) => void; onStateChange: (event: YouTubePlayerEvent) => void; onAutoplayBlocked?: () => void; onError?: () => void } }) => YouTubePlayerApi };
 declare global { interface Window { YT?: YouTubeApi; onYouTubeIframeAPIReady?: () => void } }
 
-type RideState = { speed: number; steer: number; steeringAngle: number; lateralVelocity: number; distance: number; throttle: boolean; brake: boolean; autoRide: boolean };
+type RideState = { speed: number; steer: number; steeringAngle: number; lateralVelocity: number; distance: number; throttle: boolean; brake: boolean; autoRide: boolean; tunnelActive: boolean };
 type BikeType = 'Sport' | 'Naked' | 'Touring' | 'Retro';
 type Motorcycle = { id: string; name: string; category: BikeType; topSpeed: number; acceleration: number; braking: number; steering: number; color: string; description: string };
 const motorcycleCatalog: Motorcycle[] = [
@@ -30,7 +32,7 @@ const motorcycleCatalog: Motorcycle[] = [
   { id: 'scrambler-650', name: 'Scrambler 650', category: 'Retro', topSpeed: 172, acceleration: 40, braking: 89, steering: 1.14, color: '#c5793e', description: 'Raised stance, block tires and a lively upright feel.' },
 ];
 const laneMarkOffsets = [-10, -6, -2];
-type BikeProps = { ride: React.MutableRefObject<RideState>; cameraMode: 'chase' | 'cockpit'; color: string; bikeType: BikeType; bikeModelId: string; quality: string };
+type BikeProps = { ride: React.MutableRefObject<RideState>; cameraMode: CameraMode; color: string; bikeType: BikeType; bikeModelId: string; quality: string };
 
 function Bike({ ride, cameraMode, color, bikeType, bikeModelId, quality }: BikeProps) {
   const root = useRef<THREE.Group>(null);
@@ -125,7 +127,7 @@ function Bike({ ride, cameraMode, color, bikeType, bikeModelId, quality }: BikeP
       {[0, 1, 2, 3, 4].map(i => <mesh key={`rev-${i}`} position={[(i - 2) * .045, .34, -.24]}><boxGeometry args={[.025, .018, .015]} /><meshBasicMaterial color={i < 3 ? '#52d7ba' : '#ff9c63'} toneMapped={false} /></mesh>)}
     </group>
     <mesh position={[0, .92, .37]} rotation={[.16, 0, 0]}><boxGeometry args={[.34, .05, .22]} /><meshStandardMaterial color="#090c11" /></mesh>
-    <group visible={cameraMode === 'chase'}>
+    <group visible={cameraMode !== 'cockpit'}>
       <mesh position={[0, .97, .2]} rotation={[-.18, 0, 0]}><capsuleGeometry args={[.145, .2, 5, 10]} /><meshStandardMaterial color="#202833" roughness={.82} /></mesh>
       <mesh position={[0, 1.27, .08]} rotation={[-.24, 0, 0]}><capsuleGeometry args={[.165, .3, 6, 12]} /><meshStandardMaterial color="#252d38" emissive="#10151d" emissiveIntensity={.12} roughness={.78} /></mesh>
       <mesh position={[0, 1.62, -.015]} scale={[1, .94, .92]}><sphereGeometry args={[.165, 18, 14]} /><meshStandardMaterial color="#111a26" emissive="#172638" emissiveIntensity={.18} metalness={.52} roughness={.2} /></mesh>
@@ -204,6 +206,30 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
   const forestCanopies = useRef<THREE.InstancedMesh>(null);
   const cityCanopies = useRef<THREE.InstancedMesh>(null);
   const segmentLength = 12;
+  const tunnelShellGeometry = useMemo(() => {
+    const pieces = [
+      new THREE.BoxGeometry(22.8, .5, segmentLength).translate(0, 7.15, 0),
+      new THREE.BoxGeometry(.45, 7.3, segmentLength).translate(-11.1, 3.5, 0),
+      new THREE.BoxGeometry(.45, 7.3, segmentLength).translate(11.1, 3.5, 0),
+    ];
+    const merged = mergeGeometries(pieces);
+    pieces.forEach(piece => piece.dispose());
+    return merged;
+  }, []);
+  const tunnelNeonGeometry = useMemo(() => {
+    const pieces = [
+      new THREE.BoxGeometry(.12, .1, segmentLength * .92).translate(-9.85, 6.72, 0),
+      new THREE.BoxGeometry(.12, .1, segmentLength * .92).translate(9.85, 6.72, 0),
+      new THREE.BoxGeometry(.14, .08, segmentLength * .92).translate(0, 6.88, 0),
+      new THREE.BoxGeometry(.035, .03, segmentLength * .94).translate(-8.9, .08, 0),
+      new THREE.BoxGeometry(.035, .03, segmentLength * .94).translate(8.9, .08, 0),
+    ];
+    const merged = mergeGeometries(pieces);
+    pieces.forEach(piece => piece.dispose());
+    return merged;
+  }, []);
+  const tunnelShellMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#111827', metalness: .58, roughness: .32, emissive: '#07101e', emissiveIntensity: .4 }), []);
+  const tunnelNeonMaterial = useMemo(() => new THREE.MeshBasicMaterial({ color: '#58dfff', toneMapped: false }), []);
   const asphaltTexture = useMemo(() => {
     const size = 128, data = new Uint8Array(size * size * 4);
     for (let i = 0; i < size * size; i++) { const grain = 28 + Math.random() * 24; const offset = i * 4; data[offset] = grain; data[offset + 1] = grain + 2; data[offset + 2] = grain + 5; data[offset + 3] = 255; }
@@ -237,6 +263,8 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
     // Recycle each prebuilt tile/prop only after it has passed well behind the camera.
     const travel = ride.current.speed * dt * .12;
     const aheadBuffer = THREE.MathUtils.clamp(900 + ride.current.speed * .4, 900, 1000);
+    const tunnelProgress = THREE.MathUtils.euclideanModulo(ride.current.distance * .12, 288);
+    ride.current.tunnelActive = tunnelProgress >= 84 && tunnelProgress < 228;
     if (batchRoot.current) {
       batchRoot.current.position.z += travel;
     }
@@ -324,7 +352,7 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
   const isCity = environment === 'Neon City';
   const isCoast = environment === 'Coastal Road';
   const rain = weather.includes('Rain') || weather === 'Thunderstorm';
-  const asphaltMaterial = useMemo(() => new THREE.MeshStandardMaterial({ map: asphaltTexture, color: rain ? '#647484' : '#737e8c', roughness: quality === 'Low' ? .94 : rain ? .2 : .86, metalness: quality === 'Low' ? .02 : rain ? .1 : .12, emissive: rain && quality !== 'Low' ? '#101d2e' : '#000000', emissiveIntensity: rain && quality !== 'Low' ? .32 : 0 }), [asphaltTexture, rain, quality]);
+  const asphaltMaterial = useMemo(() => new THREE.MeshStandardMaterial({ map: asphaltTexture, color: rain ? '#647484' : '#737e8c', roughness: quality === 'Low' ? .94 : rain ? .15 : .86, metalness: quality === 'Low' ? .02 : rain ? .3 : .12, emissive: rain && quality !== 'Low' ? '#101d2e' : '#000000', emissiveIntensity: rain && quality !== 'Low' ? .32 : 0 }), [asphaltTexture, rain, quality]);
   const railMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#505963', metalness: .7, roughness: .4 }), []);
   const shoulderMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#c5d2dc', emissive: '#7394b5', emissiveIntensity: rain ? .5 : .12 }), [rain]);
   return <group>
@@ -337,6 +365,10 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
       <instancedMesh ref={sideMarks} args={[sideMarkGeometry, sideMarkMaterial, segments.length * 6]} frustumCulled={false} />
     </group>
     {segments.map(({ z, seed }, index) => <group key={seed} ref={node => { segmentRefs.current[index] = node; }} position={[0, 0, z]}>
+      {seed % 24 >= 12 && <group position={[0, 0, -6]}>
+        <mesh geometry={tunnelShellGeometry} material={tunnelShellMaterial} />
+        <mesh geometry={tunnelNeonGeometry} material={tunnelNeonMaterial} />
+      </group>}
       {isCity && <mesh position={[(seed % 2 ? 1 : -1) * (14 + seed % 5), 3.3, -12]}><boxGeometry args={[2.6, 6.6 + seed % 5, 2.4]} /><meshStandardMaterial color="#101b2b" emissive={seed % 3 ? '#07172b' : '#31184b'} emissiveIntensity={.45} /></mesh>}
       {isCity && seed % 4 === 1 && <group position={[seed % 2 ? -12.5 : 12.5, 0, -8]}>
         <mesh position={[0, 2.2, 0]}><cylinderGeometry args={[.045, .07, 4.4, 6]} /><meshStandardMaterial color="#363c48" metalness={.7} /></mesh>
@@ -378,6 +410,10 @@ function World({ ride, cameraMode, color, bikeType, bikeModelId, environment, we
   const { gl } = useThree();
   const camera = useRef<THREE.PerspectiveCamera>(null);
   const lookTarget = useMemo(() => new THREE.Vector3(), []);
+    const aimTarget = useMemo(() => new THREE.Vector3(), []);
+    const cinematicClock = useRef(0);
+    const cinematicShotTime = useRef(0);
+    const cinematicShot = useRef(0);
   const lightning = useRef<THREE.PointLight>(null);
   const flash = useRef(0);
   const frameStats = useRef({ frames: 0, seconds: 0 });
@@ -393,10 +429,40 @@ function World({ ride, cameraMode, color, bikeType, bikeModelId, environment, we
     if (!c) return;
     const bikeX = ride.current.steer;
     const chase = cameraMode === 'chase';
-    lookTarget.set(bikeX - ride.current.lateralVelocity * (chase ? .018 : .006), (chase ? 2.55 : 1.68) + Math.sin(ride.current.distance * .42) * Math.min(.009, ride.current.speed / 18000), chase ? 6.4 : -1.35);
-    c.position.lerp(lookTarget, 1 - Math.exp(-dt * 3.2));
-    c.lookAt(bikeX, chase ? .88 : 1.32, chase ? -5.5 : -16);
-    c.fov = THREE.MathUtils.damp(c.fov, 67 + ride.current.speed * .11, 2, dt);
+    const cinematic = cameraMode === 'cinematic';
+    if (cinematic) {
+      cinematicClock.current += dt;
+      if (ride.current.autoRide) {
+        cinematicShotTime.current += dt;
+        if (cinematicShotTime.current >= 12) {
+          cinematicShotTime.current %= 12;
+          cinematicShot.current = (cinematicShot.current + 1) % 4;
+        }
+      } else {
+        cinematicShotTime.current = 0;
+        cinematicShot.current = 0;
+      }
+      const orbit = cinematicClock.current * .16;
+      if (cinematicShot.current === 0) {
+        lookTarget.set(bikeX + Math.sin(orbit) * 3.6, 2.35, 4.8 + Math.cos(orbit) * 1.2);
+        aimTarget.set(bikeX, .9, -9);
+      } else if (cinematicShot.current === 1) {
+        lookTarget.set(bikeX + 3.4, .95, -3.4);
+        aimTarget.set(bikeX, .95, .3);
+      } else if (cinematicShot.current === 2) {
+        lookTarget.set(bikeX + Math.sin(orbit * .55) * 5, 9, 2.2);
+        aimTarget.set(bikeX, 0, -17);
+      } else {
+        lookTarget.set(bikeX + 5.2 + Math.sin(orbit) * .8, 1.8, 1.1);
+        aimTarget.set(bikeX, 1, -13);
+      }
+    } else {
+      lookTarget.set(bikeX - ride.current.lateralVelocity * (chase ? .018 : .006), (chase ? 2.55 : 1.68) + Math.sin(ride.current.distance * .42) * Math.min(.009, ride.current.speed / 18000), chase ? 6.4 : -1.35);
+      aimTarget.set(bikeX, chase ? .88 : 1.32, chase ? -5.5 : -16);
+    }
+    c.position.lerp(lookTarget, 1 - Math.exp(-dt * (cinematic ? 1.45 : 3.2)));
+    c.lookAt(aimTarget);
+    c.fov = THREE.MathUtils.damp(c.fov, cinematic ? 56 : 67 + ride.current.speed * .11, 2, dt);
     // Speed increases the visible pre-generated horizon; fog hides the pool's distant boundary.
     c.far = quality === 'Low' ? 440 : THREE.MathUtils.clamp(620 + ride.current.speed * .9, 620, 830);
     c.updateProjectionMatrix();
@@ -610,11 +676,11 @@ function createLofiLoop(context: AudioContext, initialGenre: MusicGenre, output:
 }
 
 function App() {
-  const ride = useRef<RideState>({ speed: 0, steer: 0, steeringAngle: 0, lateralVelocity: 0, distance: 0, throttle: false, brake: false, autoRide: false });
+  const ride = useRef<RideState>({ speed: 0, steer: 0, steeringAngle: 0, lateralVelocity: 0, distance: 0, throttle: false, brake: false, autoRide: false, tunnelActive: false });
   const speedReadout = useRef<HTMLSpanElement>(null);
   const speedMeter = useRef<HTMLElement>(null);
   const engineLoadReadout = useRef<HTMLElement>(null);
-  const [cameraMode, setCameraMode] = useState<'chase' | 'cockpit'>('chase');
+  const [cameraMode, setCameraMode] = useState<CameraMode>('chase');
   const [screen, setScreen] = useState<'menu' | 'ride' | 'pause' | 'settings'>('menu');
   const [settingsReturn, setSettingsReturn] = useState<'ride' | 'menu'>('menu');
   const [hud, setHud] = useState(true);
@@ -660,6 +726,8 @@ function App() {
   const engineOscillatorRef = useRef<OscillatorNode | null>(null);
   const engineGainRef = useRef<GainNode | null>(null);
   const engineNoiseGainRef = useRef<GainNode | null>(null);
+  const tunnelReverbGainRef = useRef<GainNode | null>(null);
+  const tunnelReverbActiveRef = useRef(false);
   const windGainRef = useRef<GainNode | null>(null);
   const windFilterRef = useRef<BiquadFilterNode | null>(null);
   const rainGainRef = useRef<GainNode | null>(null);
@@ -747,6 +815,7 @@ function App() {
       if (movement.includes(k) && screenRef.current === 'ride') { keysRef.current[k] = true; if (ride.current.autoRide) { ride.current.autoRide = false; actionsRef.current.setAutoRide(false); } }
       if (e.repeat) return;
       if (k === 'c' && screenRef.current === 'ride') actionsRef.current.setCameraMode(v => v === 'chase' ? 'cockpit' : 'chase');
+        if (k === 'v' && screenRef.current === 'ride') actionsRef.current.setCameraMode(v => v === 'cinematic' ? 'chase' : 'cinematic');
       if (k === 'h' && (screenRef.current === 'ride' || screenRef.current === 'pause')) actionsRef.current.setHud(v => !v);
       if (k === 'p' && screenRef.current === 'ride') actionsRef.current.toggleAutoRide();
       if (k === 'escape') actionsRef.current.setScreen(v => v === 'ride' ? 'pause' : v === 'pause' ? 'ride' : v);
@@ -807,16 +876,25 @@ function App() {
         const oscillator=context.createOscillator(), engineFilter=context.createBiquadFilter(), engineGain=context.createGain();
         oscillator.type='triangle'; oscillator.frequency.value=48; engineFilter.type='lowpass'; engineFilter.frequency.value=190; engineGain.gain.value=engineVolume*.034;
         oscillator.connect(engineFilter).connect(engineGain).connect(master); oscillator.start();
+        const convolver = context.createConvolver(), tunnelReverbGain = context.createGain();
+        const impulseLength = Math.floor(context.sampleRate * 2.6), impulse = context.createBuffer(2, impulseLength, context.sampleRate);
+        for (let channel = 0; channel < impulse.numberOfChannels; channel++) {
+          const samples = impulse.getChannelData(channel);
+          for (let i = 0; i < impulseLength; i++) samples[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / impulseLength, 2.6);
+        }
+        convolver.buffer = impulse; tunnelReverbGain.gain.value = 0;
+        engineFilter.connect(convolver); convolver.connect(tunnelReverbGain).connect(master);
         const buffer=context.createBuffer(1,context.sampleRate*2,context.sampleRate), data=buffer.getChannelData(0);
         for(let i=0;i<data.length;i++) data[i]=Math.random()*2-1;
         const noise=context.createBufferSource(); noise.buffer=buffer; noise.loop=true;
         const engineNoiseFilter=context.createBiquadFilter(), engineNoiseGain=context.createGain(), windFilter=context.createBiquadFilter(), windGain=context.createGain(), rainFilter=context.createBiquadFilter(), rainGain=context.createGain();
         engineNoiseFilter.type='lowpass'; engineNoiseFilter.frequency.value=190; engineNoiseFilter.Q.value=.7; engineNoiseGain.gain.value=engineVolume*.012;
+        engineNoiseFilter.connect(convolver);
         windFilter.type='lowpass'; windFilter.frequency.value=480; windGain.gain.value=environmentVolume*(.001+ride.current.speed/210*.018);
         rainFilter.type='lowpass'; rainFilter.frequency.value=1250; rainGain.gain.value=environmentVolume*(weather==='Thunderstorm'?.02:weather==='Heavy Rain'?.016:weather==='Light Rain'?.01:0);
         noise.connect(engineNoiseFilter).connect(engineNoiseGain).connect(master);
         noise.connect(windFilter).connect(windGain).connect(master); noise.connect(rainFilter).connect(rainGain).connect(master); noise.start();
-        engineOscillatorRef.current=oscillator; engineGainRef.current=engineGain; engineNoiseGainRef.current=engineNoiseGain; windGainRef.current=windGain; windFilterRef.current=windFilter; rainGainRef.current=rainGain;
+        engineOscillatorRef.current=oscillator; engineGainRef.current=engineGain; engineNoiseGainRef.current=engineNoiseGain; tunnelReverbGainRef.current=tunnelReverbGain; windGainRef.current=windGain; windFilterRef.current=windFilter; rainGainRef.current=rainGain;
       }
       const context = audioContextRef.current;
       void context.resume().then(() => setAudioStatus(context.state === 'running' ? 'ready' : 'locked')).catch(() => setAudioStatus('locked'));
@@ -905,6 +983,10 @@ function App() {
           if (engineOscillatorRef.current) engineOscillatorRef.current.frequency.setTargetAtTime(48 + r.speed * 1.05 + (r.throttle ? 14 : 0), now, .1);
           if (engineGainRef.current) engineGainRef.current.gain.setTargetAtTime(engineVolume * (.034 + r.speed / 220 * .035 + (r.throttle ? .009 : 0)), now, .28);
           if (engineNoiseGainRef.current) engineNoiseGainRef.current.gain.setTargetAtTime(engineVolume * (.012 + r.speed / 220 * .014), now, .4);
+          if (tunnelReverbGainRef.current && tunnelReverbActiveRef.current !== r.tunnelActive) {
+            tunnelReverbActiveRef.current = r.tunnelActive;
+            tunnelReverbGainRef.current.gain.setTargetAtTime(r.tunnelActive ? .22 : 0, now, r.tunnelActive ? .35 : 1.1);
+          }
           if (windGainRef.current) windGainRef.current.gain.setTargetAtTime(environmentVolume * (.001 + r.speed / 210 * .018), now, .5);
           if (windFilterRef.current) windFilterRef.current.frequency.setTargetAtTime(480 + r.speed * 3, now, .7);
           const rainFactor = weather === 'Thunderstorm' ? .02 : weather === 'Heavy Rain' ? .016 : weather === 'Light Rain' ? .01 : weather === 'Snow' ? .006 : 0;
@@ -935,7 +1017,8 @@ function App() {
       <aside className="speed"><div className="speedNum"><span ref={speedReadout}>{displaySpeed}</span><small> KM/H</small></div><div className="meter"><i ref={speedMeter} style={{width:'0%'}} /></div><div className="rpm"><span>ENGINE LOAD</span><b ref={engineLoadReadout}>{displayLoad}%</b></div></aside>
       <nav className="minimalControls" aria-label="Ride controls">
         <span className="brand">NIGHT<span>RIDE</span></span>
-        <button onClick={()=>setCameraMode(v=>v==='chase'?'cockpit':'chase')}>CAMERA <b>{cameraMode==='chase'?'3RD':'1ST'}</b></button>
+          <button onClick={()=>setCameraMode(v=>v==='cockpit'?'chase':'cockpit')}>CAMERA <b>{cameraMode==='chase'?'3RD':cameraMode==='cockpit'?'1ST':'CINE'}</b></button>
+          <button className={cameraMode==='cinematic'?'active':''} aria-pressed={cameraMode==='cinematic'} onClick={()=>setCameraMode(v=>v==='cinematic'?'chase':'cinematic')}>CINEMATIC <b>{cameraMode==='cinematic'?'ON':'OFF · V'}</b></button>
         <button onClick={openSettings}>WORLD <b>{environment.toUpperCase()}</b></button>
         <button className={autoRide?'active':''} aria-pressed={autoRide} onClick={toggleAutoRide}>AUTO-RIDE <b>{autoRide?'ON · P':'OFF · P'}</b></button>
         <div className="miniPlayer">
@@ -954,13 +1037,13 @@ function App() {
         </div>
         <span className="hudHint">PRESS H TO HIDE HUD</span>
       </nav>
-      {cameraMode==='cockpit' && <div className={'visor '+(weather.includes('Rain')||weather==='Thunderstorm'?'wet':'')} aria-hidden="true"><i/><b/><em/></div>}
+      {cameraMode==='cockpit' && <div className={'visor '+(weather.includes('Rain')||weather==='Thunderstorm'?'wet':'')} aria-hidden="true"><span className="visorDrops"/><i/><b/><em/></div>}
     </>}
     {screen==='pause' && hud && <section className="modal overlay"><div className="eyebrow">RIDE PAUSED</div><h2>Take your time.</h2><button className="primary" onClick={()=>setScreen('ride')}>Continue ride</button><button className="ghost" onClick={()=>setScreen('menu')}>Main menu</button></section>}
     {screen==='settings' && <section className="settings overlay"><button className="close" onClick={()=>setScreen(settingsReturn)}>BACK</button><div className="eyebrow">PERSONALIZE YOUR RIDE</div><h2>Ride setup</h2><label>Environment<select value={environment} onChange={e=>setEnvironment(e.target.value)}>{['Neon City','Mountain Pass','Forest Highway','Coastal Road'].map(x=><option key={x}>{x}</option>)}</select></label><label>Weather<select value={weather} onChange={e=>setWeather(e.target.value)}>{['Clear night','Light Rain','Heavy Rain','Fog','Thunderstorm'].map(x=><option key={x}>{x}</option>)}</select></label><label>Time<select value={timeOfDay} onChange={e=>setTimeOfDay(e.target.value)}>{['Deep night','Blue hour','Sunset','Sunrise'].map(x=><option key={x}>{x}</option>)}</select></label><label>Graphics<select value={quality} onChange={e=>setQuality(e.target.value)}>{['Low','Medium','High'].map(x=><option key={x}>{x}</option>)}</select></label><label>Traffic<select value={trafficDensity} onChange={e=>setTrafficDensity(e.target.value as typeof trafficDensity)}>{['Off','Low','Medium','High'].map(x=><option key={x}>{x}</option>)}</select></label><label>Camera<select value={cameraMode} onChange={e=>setCameraMode(e.target.value as 'chase'|'cockpit')}><option value="chase">Third person</option><option value="cockpit">First person</option></select></label><label>Motorcycle<select value={bikeModelId} onChange={e=>{const model=motorcycleCatalog.find(x=>x.id===e.target.value);if(model){setBikeModelId(model.id);setBikeType(model.category);setColor(model.color)}}}>{(["Sport","Naked","Touring","Retro"] as BikeType[]).map(category=><optgroup key={category} label={category}>{motorcycleCatalog.filter(model=>model.category===category).map(model=><option key={model.id} value={model.id}>{model.name}</option>)}</optgroup>)}</select></label><div className="bikeInfo"><strong>{selectedBike.name} · {selectedBike.category}</strong><small>Top {selectedBike.topSpeed} km/h · Accel {selectedBike.acceleration} · Handling {selectedBike.steering.toFixed(2)}</small><small>{selectedBike.description}</small></div><label>Bike paint<input type="color" value={color} onChange={e=>setColor(e.target.value)} /></label><div className="audioBox"><span>{youtubeTracks[musicGenre].title+' · YOUTUBE'}</span><label>Generated genre<select value={musicGenre} onChange={e=>setMusicGenre(e.target.value as MusicGenre)}>{(["Lo-Fi","Synthwave","Phonk"] as MusicGenre[]).map(genre=><option key={genre}>{genre}</option>)}</select></label><input type="file" accept="audio/*" multiple onChange={e=>{const files=Array.from(e.target.files ?? []); if(files.length){setTracks(v=>[...v,...files]);setTrackIndex(tracks.length);setMusicOn(true);}}}/>{tracks.map((track,i)=><div className="trackRow" key={`${track.name}-${i}`}><button className="trackSelect" onClick={()=>{setTrackIndex(i);setMusicOn(true)}}>{i===trackIndex?"Now playing: ":""}{track.name}</button><button className="removeTrack" onClick={()=>{setTracks(v=>v.filter((_,j)=>j!==i));if(i===trackIndex){setMusicOn(false);setTrackIndex(0)}else if(i<trackIndex)setTrackIndex(j=>j-1)}}>Remove</button></div>)}<div className="trackNav"><button onClick={()=>stepTrack(-1)} disabled={!tracks.length}>Previous</button><button onClick={toggleMusicPlayback}>{musicOn?"Pause":"Play"}</button><button onClick={()=>stepTrack(1)} disabled={!tracks.length}>Next</button></div><label className="seek">Seek<input type="range" min="0" max={trackDuration||1} step=".25" value={Math.min(trackTime,trackDuration||1)} disabled={!tracks.length||!trackDuration} onChange={e=>{const t=Number(e.target.value);setTrackTime(t);if(audioRef.current)audioRef.current.currentTime=t}}/><small>{Math.floor(trackTime/60)}:{String(Math.floor(trackTime%60)).padStart(2,"0")} / {Math.floor(trackDuration/60)}:{String(Math.floor(trackDuration%60)).padStart(2,"0")}</small></label><small>{musicGenre==='Lo-Fi'&&!tracks.length?'The YouTube audio source runs in the background; if the browser blocks it, the built-in Lo-Fi synthesizer is used.':'Imported audio stays on this device until you close the page.'}</small><label className="vol">Master volume<input type="range" min="0" max="1" step=".01" value={masterVolume} onChange={e=>setMasterVolume(Number(e.target.value))}/></label><label className="vol">Music volume<input type="range" min="0" max="1" step=".01" value={musicVolume} onChange={e=>setMusicVolume(Number(e.target.value))}/></label><label className="vol">Engine volume<input type="range" min="0" max="1" step=".01" value={engineVolume} onChange={e=>setEngineVolume(Number(e.target.value))}/></label><label className="vol">Environment volume<input type="range" min="0" max="1" step=".01" value={environmentVolume} onChange={e=>setEnvironmentVolume(Number(e.target.value))}/></label></div><div className="controlsNote">W/^ accelerate · S/v brake · A/D steer · C camera · H HUD · Esc pause</div><button className="primary" onClick={()=>setScreen(settingsReturn)}>Done</button></section>}
     <div className="youtubeAudioHost" aria-hidden="true"><iframe ref={youtubeFrameRef} title="Background music audio" width="200" height="200" tabIndex={-1} src={`https://www.youtube.com/embed/${youtubeTracks[musicGenre].id}?enablejsapi=1&controls=0&playsinline=1&loop=1&playlist=${youtubeTracks[musicGenre].id}&origin=${encodeURIComponent(window.location.origin)}`} allow="autoplay; encrypted-media" referrerPolicy="strict-origin-when-cross-origin" onLoad={()=>setYoutubeLoaded(true)} /></div>
     <audio ref={audioRef} onLoadedMetadata={e=>{setTrackDuration(e.currentTarget.duration||0);setTrackTime(0)}} onTimeUpdate={e=>setTrackTime(e.currentTarget.currentTime)} onEnded={()=>stepTrack(1)} />
-    {hud && <div className="caption">W / UP ACCELERATE · S / DOWN BRAKE · A/D STEER · C CAMERA · P AUTO-RIDE · H HUD</div>}
+    {hud && <div className="caption">W / UP ACCELERATE · S / DOWN BRAKE · A/D STEER · C CAMERA · V CINE · P AUTO-RIDE · H HUD</div>}
   </main>;
 }
 createRoot(document.getElementById('root')!).render(<App />);

@@ -39,3 +39,6 @@
 .youtubeAudioHost iframe{display:none!important;width:0!important;height:0!important;border:0!important;}
 
 @media (min-width:561px) and (max-width:900px){.minimalControls .miniTrack small:not(.youtubeStatus){display:none}.minimalControls .miniTrack .youtubeStatus{display:block;font-size:7px;line-height:1.1}}
+
+.visorDrops{position:absolute;inset:-8% 0 0;pointer-events:none;opacity:.38;mix-blend-mode:screen;filter:blur(.15px);background-image:radial-gradient(ellipse 4px 8px at 14% 28%,#d9edff66 0 28%,#a7c8ed22 44%,transparent 72%),radial-gradient(ellipse 3px 6px at 37% 64%,#e3f3ff55 0 25%,#a7c8ed1c 46%,transparent 74%),radial-gradient(ellipse 5px 9px at 68% 34%,#e3f3ff66 0 24%,#a7c8ed24 45%,transparent 73%),radial-gradient(ellipse 3px 6px at 86% 76%,#d9edff55 0 24%,#a7c8ed20 45%,transparent 72%);background-size:100% 110%;animation:visorDropsSlide 9s ease-in-out infinite alternate}
+@keyframes visorDropsSlide{from{background-position:0 0;transform:translateY(-1%)}to{background-position:0 100%;transform:translateY(1%)}}

@@ -42,3 +42,16 @@
 
 .visorDrops{position:absolute;inset:-8% 0 0;pointer-events:none;opacity:.38;mix-blend-mode:screen;filter:blur(.15px);background-image:radial-gradient(ellipse 4px 8px at 14% 28%,#d9edff66 0 28%,#a7c8ed22 44%,transparent 72%),radial-gradient(ellipse 3px 6px at 37% 64%,#e3f3ff55 0 25%,#a7c8ed1c 46%,transparent 74%),radial-gradient(ellipse 5px 9px at 68% 34%,#e3f3ff66 0 24%,#a7c8ed24 45%,transparent 73%),radial-gradient(ellipse 3px 6px at 86% 76%,#d9edff55 0 24%,#a7c8ed20 45%,transparent 72%);background-size:100% 110%;animation:visorDropsSlide 9s ease-in-out infinite alternate}
 @keyframes visorDropsSlide{from{background-position:0 0;transform:translateY(-1%)}to{background-position:0 100%;transform:translateY(1%)}}
+
+.visorTint{position:absolute;z-index:1;inset:0;pointer-events:none;mix-blend-mode:screen;transition:background-color .35s ease}
+.garageCustomization{position:absolute;z-index:4;left:28px;bottom:28px;width:min(310px,calc(100vw - 56px));padding:20px 22px;background:rgba(8,15,25,.84);border:1px solid #d9eaff24;backdrop-filter:blur(18px);box-shadow:0 16px 52px #0007;color:#e7edf5}
+.garageCustomization .close{position:absolute;right:16px;top:13px;background:none;border:0;color:#b8c6d6;font:10px 'DM Mono',monospace}
+.garageCustomization h2{margin:9px 0 17px;font-size:19px;font-weight:400}
+.paintPresetGrid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:0 0 14px;padding:0;border:0}
+.paintPresetGrid legend{grid-column:1/-1;margin:0 0 7px;color:#aebacc;font:10px 'DM Mono',monospace}
+.paintPreset{display:flex;align-items:center;gap:7px;min-width:0;padding:7px 8px;border:1px solid #ffffff1e;background:#101925;color:#c9d3df;text-align:left;font-size:9px}
+.paintPreset[aria-pressed="true"]{border-color:#a9c8eeaa;background:#182537}
+.paintPreset i{flex:0 0 14px;width:14px;height:14px;border:1px solid #ffffff52;border-radius:50%;box-shadow:0 0 10px currentColor}
+.garageCustomization>label{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:9px 0;color:#b7c2d0;font-size:11px}
+.garageCustomization select{width:148px;border:1px solid #ffffff25;border-radius:2px;background:#111a27;color:#ecf1f7;padding:8px;font-size:10px}
+@media(max-width:700px){.garageCustomization{left:12px;right:12px;bottom:12px;width:auto;padding:12px 15px}.garageCustomization h2{margin:4px 0 8px;font-size:16px}.paintPresetGrid{gap:5px;margin-bottom:7px}.paintPresetGrid legend{margin-bottom:3px}.paintPreset{padding:5px 6px;font-size:8px}.paintPreset i{flex-basis:12px;width:12px;height:12px}.garageCustomization>label{margin:6px 0;font-size:10px}.garageCustomization select{width:132px;padding:6px;font-size:9px}}

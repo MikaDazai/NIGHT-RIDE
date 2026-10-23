@@ -1,4 +1,20 @@
 type CameraMode = 'chase' | 'cockpit' | 'cinematic';
+type UnderglowId = 'off' | 'blue' | 'pink' | 'green' | 'amber';
+type VisorTintId = 'clear' | 'ice' | 'rose' | 'amber';
+const underglowPalette: Record<UnderglowId, string> = { off: 'off', blue: '#38bdf8', pink: '#f04ea5', green: '#52e39a', amber: '#ffad4d' };
+const visorTintPalette: Record<VisorTintId, string> = { clear: 'transparent', ice: 'rgba(65, 162, 235, .12)', rose: 'rgba(234, 70, 153, .12)', amber: 'rgba(245, 171, 77, .12)' };
+const motorcyclePaintOptions = [
+  { name: 'Midnight Black', color: '#10131e' },
+  { name: 'Cyber Neon Pink', color: '#ed3f9b' },
+  { name: 'Electric Blue', color: '#347de0' },
+  { name: 'Acid Green', color: '#82c83e' },
+];
+const underglowOptions: { id: UnderglowId; name: string }[] = [
+  { id: 'off', name: 'Off' }, { id: 'blue', name: 'Blue' }, { id: 'pink', name: 'Pink' }, { id: 'green', name: 'Green' }, { id: 'amber', name: 'Amber' },
+];
+const visorTintOptions: { id: VisorTintId; name: string }[] = [
+  { id: 'clear', name: 'Clear' }, { id: 'ice', name: 'Ice blue' }, { id: 'rose', name: 'Rose' }, { id: 'amber', name: 'Amber' },
+];
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
@@ -14,7 +30,7 @@ type YouTubePlayerEvent = { target: YouTubePlayerApi; data: number };
 type YouTubeApi = { Player: new (element: HTMLIFrameElement, options: { events: { onReady: (event: YouTubePlayerEvent) => void; onStateChange: (event: YouTubePlayerEvent) => void; onAutoplayBlocked?: () => void; onError?: () => void } }) => YouTubePlayerApi };
 declare global { interface Window { YT?: YouTubeApi; onYouTubeIframeAPIReady?: () => void } }
 
-type RideState = { speed: number; steer: number; steeringAngle: number; lateralVelocity: number; distance: number; throttle: boolean; brake: boolean; autoRide: boolean; tunnelActive: boolean };
+type RideState = { speed: number; steer: number; steeringAngle: number; lateralVelocity: number; distance: number; throttle: boolean; brake: boolean; autoRide: boolean; tunnelActive: boolean; underglowColor: string };
 type BikeType = 'Sport' | 'Naked' | 'Touring' | 'Retro';
 type Motorcycle = { id: string; name: string; category: BikeType; topSpeed: number; acceleration: number; braking: number; steering: number; color: string; description: string };
 const motorcycleCatalog: Motorcycle[] = [
@@ -67,9 +83,14 @@ function Bike({ ride, cameraMode, color, bikeType, bikeModelId, quality }: BikeP
     if (exhaustGlow.current) exhaustGlow.current.visible = s.brake && s.speed > 30 && Math.sin(s.distance * 2.7) > .78;
   });
   const dark = '#252d37';
+  const underglowColor = ride.current.underglowColor;
   return <group ref={root} position={[0, 0, 0]}>
     <primitive object={beamTarget} />
     {quality !== 'Low' && <spotLight position={[0, 1.02, -.78]} target={beamTarget} angle={.46} penumbra={.78} intensity={115} distance={48} color="#d5e5ff" />}
+    {underglowColor !== 'off' && <>
+      {quality !== 'Low' && <pointLight position={[0, .18, -.04]} color={underglowColor} intensity={3.2} distance={4.6} decay={2} />}
+      <mesh position={[0, .11, -.08]}><boxGeometry args={[.54, .025, 1.42]} /><meshBasicMaterial color={underglowColor} transparent opacity={.7} toneMapped={false} /></mesh>
+    </>}
     <mesh position={[0, .024, .12]} rotation={[-Math.PI / 2, 0, 0]} scale={[.58, 1.12, 1]}><circleGeometry args={[1, 32]} /><meshBasicMaterial color="#02050a" transparent opacity={.4} depthWrite={false} /></mesh>
     <mesh ref={exhaustGlow} position={[0, .58, 1.02]} rotation={[Math.PI / 2, 0, 0]} visible={false}><coneGeometry args={[.055, .24, 8]} /><meshBasicMaterial color="#55baff" toneMapped={false} /></mesh>
     <mesh ref={wheelBack} position={[0, .39, rearWheelZ]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[.34, .34, .24, 24]} /><meshStandardMaterial color="#202832" roughness={.52} /></mesh>
@@ -132,8 +153,11 @@ function Bike({ ride, cameraMode, color, bikeType, bikeModelId, quality }: BikeP
       <mesh position={[0, 1.27, .08]} rotation={[-.24, 0, 0]}><capsuleGeometry args={[.165, .3, 6, 12]} /><meshStandardMaterial color="#252d38" emissive="#10151d" emissiveIntensity={.12} roughness={.78} /></mesh>
       <mesh position={[0, 1.62, -.015]} scale={[1, .94, .92]}><sphereGeometry args={[.165, 18, 14]} /><meshStandardMaterial color="#111a26" emissive="#172638" emissiveIntensity={.18} metalness={.52} roughness={.2} /></mesh>
       <mesh position={[0, 1.62, -.165]} scale={[.76, .48, .32]}><sphereGeometry args={[.12, 16, 10]} /><meshStandardMaterial color="#27445c" metalness={.58} roughness={.16} /></mesh>
+      <mesh position={[0, 1.49, -.105]} rotation={[-.12, 0, 0]}><dodecahedronGeometry args={[.13, 0]} /><meshStandardMaterial color="#202a37" metalness={.62} roughness={.28} /></mesh>
+      <mesh position={[0, 1.665, -.205]} scale={[1.05, .16, .15]}><boxGeometry args={[.18, .035, .035]} /><meshBasicMaterial color="#65eaff" toneMapped={false} /></mesh>
       <mesh position={[0, 1.34, -.015]}><boxGeometry args={[.25, .035, .1]} /><meshStandardMaterial color="#91b9dc" emissive="#274660" emissiveIntensity={.65} metalness={.3} roughness={.28} /></mesh>
       {[-1, 1].map(side => <React.Fragment key={side}>
+        <mesh position={[side * .2, 1.2, -.015]} rotation={[0, 0, side * -.12]} scale={[1.15, .85, .9]}><dodecahedronGeometry args={[.15, 1]} /><meshStandardMaterial color="#364352" metalness={.42} roughness={.48} /></mesh>
         <mesh position={[side * .26, 1.31, .025]} scale={[1.05, .9, .9]}><sphereGeometry args={[.072, 12, 10]} /><meshStandardMaterial color="#4a5967" roughness={.68} /></mesh>
         <mesh position={[side * .34, 1.2, -.16]} rotation={[-.62, 0, side * .18]}><capsuleGeometry args={[.061, .24, 4, 8]} /><meshStandardMaterial color="#4a5967" roughness={.7} /></mesh>
         <mesh position={[side * .29, 1.03, -.5]} rotation={[-1.08, 0, side * .08]}><capsuleGeometry args={[.057, .29, 4, 8]} /><meshStandardMaterial color="#52616d" roughness={.66} /></mesh>
@@ -208,9 +232,9 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
   const segmentLength = 12;
   const tunnelShellGeometry = useMemo(() => {
     const pieces = [
-      new THREE.BoxGeometry(22.8, .5, segmentLength).translate(0, 7.15, 0),
-      new THREE.BoxGeometry(.45, 7.3, segmentLength).translate(-11.1, 3.5, 0),
-      new THREE.BoxGeometry(.45, 7.3, segmentLength).translate(11.1, 3.5, 0),
+      new THREE.BoxGeometry(22.8, .7, segmentLength + .35).translate(0, 7.15, 0),
+      new THREE.BoxGeometry(.7, 7.3, segmentLength + .35).translate(-11.1, 3.5, 0),
+      new THREE.BoxGeometry(.7, 7.3, segmentLength + .35).translate(11.1, 3.5, 0),
     ];
     const merged = mergeGeometries(pieces);
     pieces.forEach(piece => piece.dispose());
@@ -230,6 +254,17 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
   }, []);
   const tunnelShellMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#111827', metalness: .58, roughness: .32, emissive: '#07101e', emissiveIntensity: .4 }), []);
   const tunnelNeonMaterial = useMemo(() => new THREE.MeshBasicMaterial({ color: '#58dfff', toneMapped: false }), []);
+  const tunnelSignTextures = useMemo(() => ['TUNNEL AHEAD', 'CAUTION / LIGHTS ON', 'CITY EXPRESSWAY'].map(text => {
+    const canvas = document.createElement('canvas'); canvas.width = 768; canvas.height = 160;
+    const context = canvas.getContext('2d');
+    if (context) {
+      context.fillStyle = '#071321'; context.fillRect(0, 0, canvas.width, canvas.height);
+      context.strokeStyle = '#58dfff'; context.lineWidth = 7; context.strokeRect(8, 8, canvas.width - 16, canvas.height - 16);
+      context.fillStyle = '#effaff'; context.font = '700 62px monospace'; context.textAlign = 'center'; context.textBaseline = 'middle';
+      context.shadowColor = '#40dfff'; context.shadowBlur = 18; context.fillText(text, canvas.width / 2, canvas.height / 2);
+    }
+    const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace; return texture;
+  }), []);
   const asphaltTexture = useMemo(() => {
     const size = 128, data = new Uint8Array(size * size * 4);
     for (let i = 0; i < size * size; i++) { const grain = 28 + Math.random() * 24; const offset = i * 4; data[offset] = grain; data[offset + 1] = grain + 2; data[offset + 2] = grain + 5; data[offset + 3] = 255; }
@@ -369,6 +404,12 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
         <mesh geometry={tunnelShellGeometry} material={tunnelShellMaterial} />
         <mesh geometry={tunnelNeonGeometry} material={tunnelNeonMaterial} />
       </group>}
+      {seed % 24 === 12 && <group position={[0, 0, 0]}>
+        <mesh position={[0, 7.55, 0]}><boxGeometry args={[23.4, .72, .78]} /><meshStandardMaterial color="#101827" metalness={.72} roughness={.28} /></mesh>
+        {[-1, 1].map(side => <mesh key={`entry-pillar-${side}`} position={[side * 11.25, 3.7, 0]}><boxGeometry args={[.62, 7.4, .82]} /><meshStandardMaterial color="#182233" metalness={.6} roughness={.36} /></mesh>)}
+        <mesh position={[0, 7.54, .41]}><planeGeometry args={[9.5, 1.65]} /><meshBasicMaterial map={tunnelSignTextures[Math.floor(seed / 24) % tunnelSignTextures.length]} toneMapped={false} /></mesh>
+        {[-1, 1].map(side => <mesh key={`entry-marker-${side}`} position={[side * 10.85, 4.4, .44]}><boxGeometry args={[.12, 1.35, .035]} /><meshBasicMaterial color={side < 0 ? '#ffbd4a' : '#ff4d66'} toneMapped={false} /></mesh>)}
+      </group>}
       {isCity && <mesh position={[(seed % 2 ? 1 : -1) * (14 + seed % 5), 3.3, -12]}><boxGeometry args={[2.6, 6.6 + seed % 5, 2.4]} /><meshStandardMaterial color="#101b2b" emissive={seed % 3 ? '#07172b' : '#31184b'} emissiveIntensity={.45} /></mesh>}
       {isCity && seed % 4 === 1 && <group position={[seed % 2 ? -12.5 : 12.5, 0, -8]}>
         <mesh position={[0, 2.2, 0]}><cylinderGeometry args={[.045, .07, 4.4, 6]} /><meshStandardMaterial color="#363c48" metalness={.7} /></mesh>
@@ -460,7 +501,31 @@ function World({ ride, cameraMode, color, bikeType, bikeModelId, environment, we
       lookTarget.set(bikeX - ride.current.lateralVelocity * (chase ? .018 : .006), (chase ? 2.55 : 1.68) + Math.sin(ride.current.distance * .42) * Math.min(.009, ride.current.speed / 18000), chase ? 6.4 : -1.35);
       aimTarget.set(bikeX, chase ? .88 : 1.32, chase ? -5.5 : -16);
     }
+    const inTunnelCinematic = cinematic && ride.current.tunnelActive;
+    if (inTunnelCinematic) {
+      const progress = THREE.MathUtils.euclideanModulo(ride.current.distance * .12, 288);
+      const tunnelBack = progress - 228 + 4;
+      const tunnelFront = progress - 84 - 3;
+      lookTarget.x = THREE.MathUtils.clamp(lookTarget.x, bikeX - 8.8, bikeX + 8.8);
+      lookTarget.y = THREE.MathUtils.clamp(lookTarget.y, 1.2, 6.15);
+      lookTarget.z = THREE.MathUtils.clamp(lookTarget.z, tunnelBack, tunnelFront);
+      aimTarget.x = THREE.MathUtils.clamp(aimTarget.x, bikeX - 8.8, bikeX + 8.8);
+      aimTarget.y = THREE.MathUtils.clamp(aimTarget.y, .8, 6);
+      aimTarget.z = THREE.MathUtils.clamp(aimTarget.z, tunnelBack, tunnelFront);
+    }
     c.position.lerp(lookTarget, 1 - Math.exp(-dt * (cinematic ? 1.45 : 3.2)));
+    if (inTunnelCinematic) {
+      c.position.x = THREE.MathUtils.clamp(c.position.x, bikeX - 9, bikeX + 9);
+      c.position.y = THREE.MathUtils.clamp(c.position.y, 1, 6.25);
+      c.position.z = THREE.MathUtils.clamp(c.position.z, lookTarget.z - .5, lookTarget.z + .5);
+      const offsetX = c.position.x - bikeX, offsetZ = c.position.z;
+      const orbitDistance = Math.hypot(offsetX, offsetZ);
+      if (orbitDistance > 7.5) {
+        const ratio = 7.5 / orbitDistance;
+        c.position.x = bikeX + offsetX * ratio;
+        c.position.z = offsetZ * ratio;
+      }
+    }
     c.lookAt(aimTarget);
     c.fov = THREE.MathUtils.damp(c.fov, cinematic ? 56 : 67 + ride.current.speed * .11, 2, dt);
     // Speed increases the visible pre-generated horizon; fog hides the pool's distant boundary.
@@ -504,6 +569,8 @@ function Rain({ ride, intensity }: { ride: React.MutableRefObject<RideState>; in
   }, [intensity]);
   useFrame((_, dt) => {
     const p = ref.current; if (!p) return;
+    p.visible = !ride.current.tunnelActive;
+    if (!p.visible) return;
     elapsed.current += dt;
     const arr = p.geometry.attributes.position.array as Float32Array;
     const speed = ride.current.speed;
@@ -676,13 +743,14 @@ function createLofiLoop(context: AudioContext, initialGenre: MusicGenre, output:
 }
 
 function App() {
-  const ride = useRef<RideState>({ speed: 0, steer: 0, steeringAngle: 0, lateralVelocity: 0, distance: 0, throttle: false, brake: false, autoRide: false, tunnelActive: false });
+  const ride = useRef<RideState>({ speed: 0, steer: 0, steeringAngle: 0, lateralVelocity: 0, distance: 0, throttle: false, brake: false, autoRide: false, tunnelActive: false, underglowColor: underglowPalette.blue });
   const speedReadout = useRef<HTMLSpanElement>(null);
   const speedMeter = useRef<HTMLElement>(null);
   const engineLoadReadout = useRef<HTMLElement>(null);
   const [cameraMode, setCameraMode] = useState<CameraMode>('chase');
-  const [screen, setScreen] = useState<'menu' | 'ride' | 'pause' | 'settings'>('menu');
+  const [screen, setScreen] = useState<'menu' | 'ride' | 'pause' | 'settings' | 'garage'>('menu');
   const [settingsReturn, setSettingsReturn] = useState<'ride' | 'menu'>('menu');
+  const [garageReturn, setGarageReturn] = useState<'menu' | 'ride' | 'pause' | 'settings'>('menu');
   const [hud, setHud] = useState(true);
   const [environment, setEnvironment] = useState('Neon City');
   const [weather, setWeather] = useState('Light Rain');
@@ -691,6 +759,24 @@ function App() {
   const fpsDebug = useMemo(() => new URLSearchParams(window.location.search).get('debug') === 'fps', []);
   const fpsReadout = useRef<HTMLDivElement>(null);
   const [color, setColor] = useState('#b13b58');
+  const [underglowId, setUnderglowId] = useState<UnderglowId>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('night-ride-garage') ?? 'null');
+      return underglowOptions.some(option => option.id === saved?.underglowId) ? saved.underglowId as UnderglowId : 'blue';
+    } catch { return 'blue'; }
+  });
+  const [visorTintId, setVisorTintId] = useState<VisorTintId>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('night-ride-garage') ?? 'null');
+      return visorTintOptions.some(option => option.id === saved?.visorTintId) ? saved.visorTintId as VisorTintId : 'clear';
+    } catch { return 'clear'; }
+  });
+  const underglowColor = underglowPalette[underglowId];
+  const visorTint = visorTintPalette[visorTintId];
+  ride.current.underglowColor = underglowColor;
+  useEffect(() => {
+    try { localStorage.setItem('night-ride-garage', JSON.stringify({ underglowId, visorTintId })); } catch { /* storage is optional */ }
+  }, [underglowId, visorTintId]);
   const [bikeType, setBikeType] = useState<BikeType>('Sport');
   const [bikeModelId, setBikeModelId] = useState('apex-r');
   const [autoRide, setAutoRide] = useState(false);
@@ -1000,6 +1086,7 @@ function App() {
   }, [bikeModelId, engineVolume, environmentVolume, weather]);
   useEffect(() => { if (screen !== 'ride') keysRef.current = {}; }, [screen]);
   const openSettings=()=>{setSettingsReturn(screen==='ride'?'ride':'menu');setScreen('settings')};
+  const openGarage=()=>{setGarageReturn(screen==='ride'||screen==='pause'||screen==='settings'?screen:'menu');setScreen('garage')};
   const begin=()=>{startAudio();setMusicOn(true);if(!tracks.length){setYoutubePanelOpen(true);setYoutubeState('loading')}setScreen('ride')};
   const changeGenre=(genre: MusicGenre)=>{setMusicGenre(genre);if(!tracks.length){startAudio();setMusicOn(true);setYoutubePanelOpen(true);setYoutubeState('loading')}};
   const stepTrack=(direction:number)=>{if(tracks.length){setTrackIndex(i=>(i+direction+tracks.length)%tracks.length);setMusicOn(true)}};
@@ -1012,7 +1099,7 @@ function App() {
     {fpsDebug && <div ref={fpsReadout} style={{ position: 'absolute', zIndex: 20, left: 12, bottom: 12, padding: '5px 8px', color: '#c9e5ff', background: '#08111acc', border: '1px solid #ffffff30', font: '11px monospace', pointerEvents: 'none' }}>MEASURING FPS</div>}
     {hud && autoNotice && <div className="autoNotice" role="status">{autoNotice}</div>}
     {debugKeys && hud && <div style={{ position: 'absolute', zIndex: 4, top: 14, right: 18, padding: '7px 10px', background: '#09111dcc', border: '1px solid #ffffff30', color: '#cfdbeb', font: '10px monospace' }}>KEYS {Object.keys(keysRef.current).filter(k => keysRef.current[k]).join(' + ') || '—'}</div>}
-    {screen==='menu' && <section className="menu overlay"><div className="eyebrow">A NIGHT RIDE EXPERIENCE</div><h1>NIGHT<span>RIDE</span></h1><p className="tagline">Find your quiet in the distance.</p><button className="primary" onClick={begin}>Start riding <span>GO</span></button><div className="menuLinks"><button onClick={openSettings}>Garage & ride setup</button><button onClick={openSettings}>Music & settings</button></div><div className="menuFoot">PROCEDURAL WORLDS · YOUR OWN SOUNDTRACK</div></section>}
+    {screen==='menu' && <section className="menu overlay"><div className="eyebrow">A NIGHT RIDE EXPERIENCE</div><h1>NIGHT<span>RIDE</span></h1><p className="tagline">Find your quiet in the distance.</p><button className="primary" onClick={begin}>Start riding <span>GO</span></button><div className="menuLinks"><button onClick={openGarage}>Garage & customization</button><button onClick={openSettings}>Ride setup & music</button></div><div className="menuFoot">PROCEDURAL WORLDS · YOUR OWN SOUNDTRACK</div></section>}
     {(screen==='ride'||screen==='pause') && hud && <>
       <aside className="speed"><div className="speedNum"><span ref={speedReadout}>{displaySpeed}</span><small> KM/H</small></div><div className="meter"><i ref={speedMeter} style={{width:'0%'}} /></div><div className="rpm"><span>ENGINE LOAD</span><b ref={engineLoadReadout}>{displayLoad}%</b></div></aside>
       <nav className="minimalControls" aria-label="Ride controls">
@@ -1037,9 +1124,26 @@ function App() {
         </div>
         <span className="hudHint">PRESS H TO HIDE HUD</span>
       </nav>
-      {cameraMode==='cockpit' && <div className={'visor '+(weather.includes('Rain')||weather==='Thunderstorm'?'wet':'')} aria-hidden="true"><span className="visorDrops"/><i/><b/><em/></div>}
+      {cameraMode==='cockpit' && <>
+        <div className="visorTint" style={{ backgroundColor: visorTint }} aria-hidden="true" />
+        <div className={'visor '+(weather.includes('Rain')||weather==='Thunderstorm'?'wet':'')} aria-hidden="true"><span className="visorDrops"/><i/><b/><em/></div>
+      </>}
     </>}
-    {screen==='pause' && hud && <section className="modal overlay"><div className="eyebrow">RIDE PAUSED</div><h2>Take your time.</h2><button className="primary" onClick={()=>setScreen('ride')}>Continue ride</button><button className="ghost" onClick={()=>setScreen('menu')}>Main menu</button></section>}
+    {screen==='pause' && hud && <section className="modal overlay"><div className="eyebrow">RIDE PAUSED</div><h2>Take your time.</h2><button className="primary" onClick={()=>setScreen('ride')}>Continue ride</button><button className="ghost" onClick={openGarage}>Garage & customization</button><button className="ghost" onClick={()=>setScreen('menu')}>Main menu</button></section>}
+    {screen==='garage' && <section className="garageCustomization overlay" aria-label="Garage customization">
+      <button className="close" onClick={()=>setScreen(garageReturn)}>BACK</button>
+      <div className="eyebrow">GARAGE LAB</div>
+      <h2>Finish & lighting</h2>
+      <fieldset className="paintPresetGrid">
+        <legend>Motorcycle paint</legend>
+        {motorcyclePaintOptions.map(option => <button type="button" key={option.name} className="paintPreset" aria-pressed={color.toLowerCase() === option.color} title={option.name} onClick={()=>setColor(option.color)}>
+          <i style={{ backgroundColor: option.color }} />{option.name}
+        </button>)}
+      </fieldset>
+      <label>Underglow<select aria-label="Underglow color" value={underglowId} onChange={e=>setUnderglowId(e.target.value as UnderglowId)}>{underglowOptions.map(option=><option key={option.id} value={option.id}>{option.name}</option>)}</select></label>
+      <label>Helmet visor tint<select aria-label="Helmet visor tint" value={visorTintId} onChange={e=>setVisorTintId(e.target.value as VisorTintId)}>{visorTintOptions.map(option=><option key={option.id} value={option.id}>{option.name}</option>)}</select></label>
+      <button className="primary" onClick={()=>setScreen(garageReturn)}>APPLY</button>
+    </section>}
     {screen==='settings' && <section className="settings overlay"><button className="close" onClick={()=>setScreen(settingsReturn)}>BACK</button><div className="eyebrow">PERSONALIZE YOUR RIDE</div><h2>Ride setup</h2><label>Environment<select value={environment} onChange={e=>setEnvironment(e.target.value)}>{['Neon City','Mountain Pass','Forest Highway','Coastal Road'].map(x=><option key={x}>{x}</option>)}</select></label><label>Weather<select value={weather} onChange={e=>setWeather(e.target.value)}>{['Clear night','Light Rain','Heavy Rain','Fog','Thunderstorm'].map(x=><option key={x}>{x}</option>)}</select></label><label>Time<select value={timeOfDay} onChange={e=>setTimeOfDay(e.target.value)}>{['Deep night','Blue hour','Sunset','Sunrise'].map(x=><option key={x}>{x}</option>)}</select></label><label>Graphics<select value={quality} onChange={e=>setQuality(e.target.value)}>{['Low','Medium','High'].map(x=><option key={x}>{x}</option>)}</select></label><label>Traffic<select value={trafficDensity} onChange={e=>setTrafficDensity(e.target.value as typeof trafficDensity)}>{['Off','Low','Medium','High'].map(x=><option key={x}>{x}</option>)}</select></label><label>Camera<select value={cameraMode} onChange={e=>setCameraMode(e.target.value as 'chase'|'cockpit')}><option value="chase">Third person</option><option value="cockpit">First person</option></select></label><label>Motorcycle<select value={bikeModelId} onChange={e=>{const model=motorcycleCatalog.find(x=>x.id===e.target.value);if(model){setBikeModelId(model.id);setBikeType(model.category);setColor(model.color)}}}>{(["Sport","Naked","Touring","Retro"] as BikeType[]).map(category=><optgroup key={category} label={category}>{motorcycleCatalog.filter(model=>model.category===category).map(model=><option key={model.id} value={model.id}>{model.name}</option>)}</optgroup>)}</select></label><div className="bikeInfo"><strong>{selectedBike.name} · {selectedBike.category}</strong><small>Top {selectedBike.topSpeed} km/h · Accel {selectedBike.acceleration} · Handling {selectedBike.steering.toFixed(2)}</small><small>{selectedBike.description}</small></div><label>Bike paint<input type="color" value={color} onChange={e=>setColor(e.target.value)} /></label><div className="audioBox"><span>{youtubeTracks[musicGenre].title+' · YOUTUBE'}</span><label>Generated genre<select value={musicGenre} onChange={e=>setMusicGenre(e.target.value as MusicGenre)}>{(["Lo-Fi","Synthwave","Phonk"] as MusicGenre[]).map(genre=><option key={genre}>{genre}</option>)}</select></label><input type="file" accept="audio/*" multiple onChange={e=>{const files=Array.from(e.target.files ?? []); if(files.length){setTracks(v=>[...v,...files]);setTrackIndex(tracks.length);setMusicOn(true);}}}/>{tracks.map((track,i)=><div className="trackRow" key={`${track.name}-${i}`}><button className="trackSelect" onClick={()=>{setTrackIndex(i);setMusicOn(true)}}>{i===trackIndex?"Now playing: ":""}{track.name}</button><button className="removeTrack" onClick={()=>{setTracks(v=>v.filter((_,j)=>j!==i));if(i===trackIndex){setMusicOn(false);setTrackIndex(0)}else if(i<trackIndex)setTrackIndex(j=>j-1)}}>Remove</button></div>)}<div className="trackNav"><button onClick={()=>stepTrack(-1)} disabled={!tracks.length}>Previous</button><button onClick={toggleMusicPlayback}>{musicOn?"Pause":"Play"}</button><button onClick={()=>stepTrack(1)} disabled={!tracks.length}>Next</button></div><label className="seek">Seek<input type="range" min="0" max={trackDuration||1} step=".25" value={Math.min(trackTime,trackDuration||1)} disabled={!tracks.length||!trackDuration} onChange={e=>{const t=Number(e.target.value);setTrackTime(t);if(audioRef.current)audioRef.current.currentTime=t}}/><small>{Math.floor(trackTime/60)}:{String(Math.floor(trackTime%60)).padStart(2,"0")} / {Math.floor(trackDuration/60)}:{String(Math.floor(trackDuration%60)).padStart(2,"0")}</small></label><small>{musicGenre==='Lo-Fi'&&!tracks.length?'The YouTube audio source runs in the background; if the browser blocks it, the built-in Lo-Fi synthesizer is used.':'Imported audio stays on this device until you close the page.'}</small><label className="vol">Master volume<input type="range" min="0" max="1" step=".01" value={masterVolume} onChange={e=>setMasterVolume(Number(e.target.value))}/></label><label className="vol">Music volume<input type="range" min="0" max="1" step=".01" value={musicVolume} onChange={e=>setMusicVolume(Number(e.target.value))}/></label><label className="vol">Engine volume<input type="range" min="0" max="1" step=".01" value={engineVolume} onChange={e=>setEngineVolume(Number(e.target.value))}/></label><label className="vol">Environment volume<input type="range" min="0" max="1" step=".01" value={environmentVolume} onChange={e=>setEnvironmentVolume(Number(e.target.value))}/></label></div><div className="controlsNote">W/^ accelerate · S/v brake · A/D steer · C camera · H HUD · Esc pause</div><button className="primary" onClick={()=>setScreen(settingsReturn)}>Done</button></section>}
     <div className="youtubeAudioHost" aria-hidden="true"><iframe ref={youtubeFrameRef} title="Background music audio" width="200" height="200" tabIndex={-1} src={`https://www.youtube.com/embed/${youtubeTracks[musicGenre].id}?enablejsapi=1&controls=0&playsinline=1&loop=1&playlist=${youtubeTracks[musicGenre].id}&origin=${encodeURIComponent(window.location.origin)}`} allow="autoplay; encrypted-media" referrerPolicy="strict-origin-when-cross-origin" onLoad={()=>setYoutubeLoaded(true)} /></div>
     <audio ref={audioRef} onLoadedMetadata={e=>{setTrackDuration(e.currentTarget.duration||0);setTrackTime(0)}} onTimeUpdate={e=>setTrackTime(e.currentTarget.currentTime)} onEnded={()=>stepTrack(1)} />

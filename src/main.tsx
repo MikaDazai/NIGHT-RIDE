@@ -40,6 +40,12 @@ function Bike({ ride, cameraMode, color, bikeType, bikeModelId, quality }: BikeP
   const exhaustGlow = useRef<THREE.Mesh>(null);
   const bodyColor = useMemo(() => new THREE.Color(color), [color]);
   const panelColor = useMemo(() => new THREE.Color('#34404d'), []);
+  const windscreenShape = useMemo(() => {
+    const shape = new THREE.Shape();
+    shape.moveTo(-.16, 0); shape.lineTo(-.23, .22); shape.lineTo(-.17, .48);
+    shape.lineTo(.17, .48); shape.lineTo(.23, .22); shape.lineTo(.16, 0); shape.closePath();
+    return shape;
+  }, []);
   const modelVariant = Math.max(0, motorcycleCatalog.findIndex(model => model.id === bikeModelId)) % 3;
   // Each model gets a distinct wheelbase/stance as well as its category silhouette.
   const frontWheelZ = [-.82, -.92, -1.02][modelVariant];
@@ -68,6 +74,12 @@ function Bike({ ride, cameraMode, color, bikeType, bikeModelId, quality }: BikeP
     <mesh position={[0, .39, rearWheelZ + .36]}><circleGeometry args={[.32, 24]} /><meshStandardMaterial color="#26313c" emissive="#17212b" emissiveIntensity={.35} metalness={.12} roughness={.78} /></mesh>
     <mesh position={[0, .39, rearWheelZ + .37]}><torusGeometry args={[.205, .026, 8, 24]} /><meshStandardMaterial color="#8493a2" metalness={.75} roughness={.28} /></mesh>
     <mesh position={[0, .39, rearWheelZ + .375]}><circleGeometry args={[.075, 16]} /><meshStandardMaterial color="#aab7c3" metalness={.72} roughness={.25} /></mesh>
+    {[-1, 1].map(side => <React.Fragment key={`rear-disc-${side}`}>
+      <mesh position={[side * .13, .39, rearWheelZ]} rotation={[0, Math.PI / 2, 0]}><torusGeometry args={[.235, .018, 6, 20]} /><meshStandardMaterial color="#b8c4cf" metalness={.92} roughness={.22} /></mesh>
+      <mesh position={[side * .14, .39, rearWheelZ]} rotation={[0, Math.PI / 2, 0]}><torusGeometry args={[.105, .018, 6, 16]} /><meshStandardMaterial color="#657483" metalness={.9} roughness={.28} /></mesh>
+      <mesh position={[side * .135, .39, frontWheelZ]} rotation={[0, Math.PI / 2, 0]}><torusGeometry args={[.255, .018, 6, 22]} /><meshStandardMaterial color="#c2cdd6" metalness={.94} roughness={.2} /></mesh>
+      <mesh position={[side * .145, .39, frontWheelZ]} rotation={[0, Math.PI / 2, 0]}><torusGeometry args={[.115, .016, 6, 16]} /><meshStandardMaterial color="#657483" metalness={.9} roughness={.26} /></mesh>
+    </React.Fragment>)}
     <mesh ref={wheelFront} position={[0, .39, frontWheelZ]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[.34, .34, .24, 24]} /><meshStandardMaterial color="#28333e" roughness={.52} /></mesh>
     <mesh position={[0, .4, .67]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[.22, .22, .18, 16]} /><meshStandardMaterial color="#9aa6b3" metalness={.85} roughness={.25} /></mesh>
     <mesh position={[0, .4, frontWheelZ]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[.17, .17, .18, 16]} /><meshStandardMaterial color="#9aa6b3" metalness={.85} roughness={.25} /></mesh>
@@ -91,7 +103,16 @@ function Bike({ ride, cameraMode, color, bikeType, bikeModelId, quality }: BikeP
     <mesh position={[0, .61, -.05]} rotation={[Math.PI / 2 + .12, 0, 0]} scale={[1, .82, 1]}><capsuleGeometry args={[.145, .48, 5, 12]} /><meshStandardMaterial color={dark} metalness={.24} roughness={.52} /></mesh>
     {[-1, 1].map(side => <mesh key={side} position={[side * .24, .7, .42]} rotation={[.22, 0, side * .12]}><boxGeometry args={[.2, .3, .35]} /><meshStandardMaterial color={panelColor} metalness={.52} roughness={.34} /></mesh>)}
     <mesh position={[0, .68, .83]}><boxGeometry args={[.38, .18, .18]} /><meshStandardMaterial color="#e94d61" emissive="#9d172d" emissiveIntensity={1.8} /></mesh>
+    <mesh position={[0, .69, .93]}><boxGeometry args={[.28, .045, .025]} /><meshBasicMaterial color="#ff315c" toneMapped={false} /></mesh>
     <mesh position={[0, 1.01, -.72]}><sphereGeometry args={[.18, 16, 10]} /><meshStandardMaterial color="#dceaff" emissive="#9ebcff" emissiveIntensity={3.2} /></mesh>
+    {[-1, 1].map(side => <mesh key={`headlight-${side}`} position={[side * .105, 1.01, -1.055]}><boxGeometry args={[.105, .06, .025]} /><meshBasicMaterial color="#dcf5ff" toneMapped={false} /></mesh>)}
+    {(bikeType === 'Sport' || bikeType === 'Touring') && <mesh position={[0, 1.08, -.82]} rotation={[-.16, 0, 0]}>
+      <shapeGeometry args={[windscreenShape]} />
+      <meshPhysicalMaterial color="#8fdcff" transparent opacity={.24} roughness={.12} metalness={.28} side={THREE.DoubleSide} depthWrite={false} />
+    </mesh>}
+    {bikeType === 'Sport' && [-1, 1].map(side => <mesh key={`neon-fairing-${side}`} position={[side * .265, .72, -.7]} rotation={[0, 0, side * -.12]}>
+      <boxGeometry args={[.018, .035, .36]} /><meshBasicMaterial color={side < 0 ? '#50dfff' : '#ff4caa'} toneMapped={false} />
+    </mesh>)}
     <group ref={front} position={[0, barHeight, -.78]}>
       <mesh position={[0, .08, -.22]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[.035, .035, .8, 8]} /><meshStandardMaterial color="#aeb7c1" metalness={.8} /></mesh>
       <mesh position={[0, .13, -.25]}><boxGeometry args={[.52, .06, .08]} /><meshStandardMaterial color="#1a2028" metalness={.8} /></mesh>
@@ -303,7 +324,7 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
   const isCity = environment === 'Neon City';
   const isCoast = environment === 'Coastal Road';
   const rain = weather.includes('Rain') || weather === 'Thunderstorm';
-  const asphaltMaterial = useMemo(() => new THREE.MeshStandardMaterial({ map: asphaltTexture, color: rain ? '#647484' : '#737e8c', roughness: quality === 'Low' ? .94 : rain ? .22 : .86, metalness: quality === 'Low' ? .02 : rain ? .26 : .12, emissive: rain && quality !== 'Low' ? '#101d2e' : '#000000', emissiveIntensity: rain && quality !== 'Low' ? .32 : 0 }), [asphaltTexture, rain, quality]);
+  const asphaltMaterial = useMemo(() => new THREE.MeshStandardMaterial({ map: asphaltTexture, color: rain ? '#647484' : '#737e8c', roughness: quality === 'Low' ? .94 : rain ? .2 : .86, metalness: quality === 'Low' ? .02 : rain ? .1 : .12, emissive: rain && quality !== 'Low' ? '#101d2e' : '#000000', emissiveIntensity: rain && quality !== 'Low' ? .32 : 0 }), [asphaltTexture, rain, quality]);
   const railMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#505963', metalness: .7, roughness: .4 }), []);
   const shoulderMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#c5d2dc', emissive: '#7394b5', emissiveIntensity: rain ? .5 : .12 }), [rain]);
   return <group>
@@ -451,12 +472,13 @@ function Traffic({ ride, density, audioContext, masterGain, environmentVolume, t
   const darkGlass = useMemo(() => new THREE.MeshStandardMaterial({ color: '#101923', metalness: .38, roughness: .25 }), []);
   const headlights = useMemo(() => new THREE.MeshStandardMaterial({ color: '#d8e8ff', emissive: '#a9ccff', emissiveIntensity: 4 }), []);
   const tail = useMemo(() => new THREE.MeshStandardMaterial({ color: '#ed3f4c', emissive: '#ff1829', emissiveIntensity: 3 }), []);
-  const palette = ['#667786', '#7b554d', '#59616b', '#8a8a80', '#46596b'];
+  const palette = ['#e34f9a', '#32c5d0', '#303b50', '#e4e9ef'];
   const bodyMaterials = useMemo(() => palette.map(color => new THREE.MeshStandardMaterial({ color, metalness: .45, roughness: .38 })), []);
   const tireMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#11151a', roughness: .9 }), []);
-  const chromeMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#8797a8', metalness: .86, roughness: .24 }), []);
-  const grilleMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#111820', metalness: .42, roughness: .5 }), []);
-  const models = useMemo(() => Array.from({ length: count }, (_, i) => ({ lane: i % 2 === 0 ? 2.5 + (Math.floor(i / 2) % 2) * 5 : -2.5 - (Math.floor(i / 2) % 2) * 5, z: -22 - (i * 19) % 115, speed: i % 2 === 0 ? 55 + (i * 13) % 65 : 78 + (i * 11) % 40, length: i % 11 === 10 ? 6.2 : i % 5 === 4 ? 4.4 : i % 3 === 2 ? 3.9 : 3.5, color: palette[i % palette.length], opposing: i % 2 === 1 })), [count]);
+  const chromeMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#aab9c7', metalness: .9, roughness: .2 }), []);
+  const grilleMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#111820', metalness: .58, roughness: .34 }), []);
+  const vehicleTypes = ['sedan', 'coupe', 'suv', 'truck'] as const;
+  const models = useMemo(() => Array.from({ length: count }, (_, i) => ({ lane: i % 2 === 0 ? 2.5 + (Math.floor(i / 2) % 2) * 5 : -2.5 - (Math.floor(i / 2) % 2) * 5, z: -22 - (i * 19) % 115, speed: i % 2 === 0 ? 55 + (i * 13) % 65 : 78 + (i * 11) % 40, vehicleType: vehicleTypes[i % vehicleTypes.length], width: [1.72, 1.76, 1.92, 2.02][i % 4], length: [4.05, 3.72, 4.8, 6.2][i % 4], color: palette[i % palette.length], opposing: i % 2 === 1 })), [count]);
   const currentSpeeds = useRef<number[]>([]);
   if (currentSpeeds.current.length !== models.length) currentSpeeds.current = models.map(car => car.speed);
   const snapshot = useMemo(() => Array.from({ length: count }, () => ({ x: 0, z: 0, opposing: false })), [count]);
@@ -503,23 +525,51 @@ function Traffic({ ride, density, audioContext, masterGain, environmentVolume, t
       }
     });
   });
-  return <>{models.map((car, i) => <group key={`${density}-${i}`} ref={el => { if (el) groups.current[i] = el; }} position={[car.lane, 0, car.z]} rotation={[0, car.opposing ? Math.PI : 0, 0]}>
-    {/* Lamp groups are located at bumper height and aimed down the car's local forward axis. */}
-    <mesh geometry={box} position={[0, car.length > 5 ? 1.05 : .72, 0]} scale={[car.length > 5 ? 2.15 : 1.65, car.length > 5 ? 1.6 : 1.15, car.length]} material={bodyMaterials[i % bodyMaterials.length]} />
-    {car.length > 5 && <mesh geometry={box} position={[0, 1.88, .18]} scale={[1.92, 1.35, car.length * .62]} material={bodyMaterials[(i + 2) % bodyMaterials.length]} />}
-    <mesh geometry={box} position={[0, car.length > 5 ? 1.63 : 1.12, -.28]} scale={[car.length > 5 ? 1.65 : 1.35, .72, car.length * .43]} material={darkGlass} />
-    <mesh geometry={box} position={[0, .62, -car.length * .53]} scale={[.72, .28, .07]} material={grilleMaterial} />
-    <mesh geometry={box} position={[0, .35, -car.length * .53]} scale={[1.78, .12, .12]} material={chromeMaterial} />
-    <mesh geometry={box} position={[0, .35, car.length * .53]} scale={[1.78, .12, .12]} material={chromeMaterial} />
-    {[-1, 1].map(side => <React.Fragment key={side}>
-      <mesh geometry={wheel} position={[side * .78, .3, -car.length * .3]} rotation={[0, 0, Math.PI / 2]} material={tireMaterial} />
-      <mesh geometry={wheel} position={[side * .78, .3, car.length * .3]} rotation={[0, 0, Math.PI / 2]} material={tireMaterial} />
-      <mesh geometry={box} position={[side * .53, .52, -car.length * .51]} scale={[.28, .18, .07]} material={headlights} />
-      <mesh geometry={box} position={[side * .53, .52, car.length * .51]} scale={[.28, .2, .07]} material={tail} />
-      <mesh geometry={wheel} position={[side * .78, .3, -car.length * .3]} rotation={[0, 0, Math.PI / 2]} scale={[.42, .55, .42]} material={chromeMaterial} />
-      <mesh geometry={wheel} position={[side * .78, .3, car.length * .3]} rotation={[0, 0, Math.PI / 2]} scale={[.42, .55, .42]} material={chromeMaterial} />
-    </React.Fragment>)}
-  </group>)}</>;
+  return <>{models.map((car, i) => {
+    const suv = car.vehicleType === 'suv', truck = car.vehicleType === 'truck', coupe = car.vehicleType === 'coupe';
+    const cabinLength = truck ? 2.25 : suv ? 2.5 : coupe ? 1.85 : 2.2;
+    const cabinZ = truck ? -car.length * .23 : -car.length * .12;
+    const roofY = truck || suv ? 1.78 : coupe ? 1.36 : 1.48;
+    const wheelX = car.width * .48, wheelFrontZ = -car.length * .31, wheelBackZ = car.length * .31;
+    return <group key={`${density}-${i}`} ref={el => { if (el) groups.current[i] = el; }} position={[car.lane, 0, car.z]} rotation={[0, car.opposing ? Math.PI : 0, 0]}>
+      <mesh geometry={box} position={[0, .63, 0]} scale={[car.width, .58, car.length * .94]} material={bodyMaterials[i % bodyMaterials.length]} />
+      <mesh geometry={box} position={[0, .96, -car.length * .3]} scale={[car.width * .94, .16, car.length * .29]} material={bodyMaterials[i % bodyMaterials.length]} />
+      {!truck && <mesh geometry={box} position={[0, .91, car.length * .34]} scale={[car.width * .9, .13, car.length * .2]} material={bodyMaterials[i % bodyMaterials.length]} />}
+      {truck ? <>
+        <mesh geometry={box} position={[0, roofY - .12, cabinZ]} scale={[car.width * .82, .74, cabinLength * .68]} material={bodyMaterials[i % bodyMaterials.length]} />
+        <mesh geometry={box} position={[0, 1.05, car.length * .29]} scale={[car.width * .94, .8, car.length * .38]} material={bodyMaterials[(i + 2) % bodyMaterials.length]} />
+        <mesh geometry={box} position={[0, 1.48, car.length * .29]} scale={[car.width * .9, .08, car.length * .35]} material={chromeMaterial} />
+      </> : <>
+        <mesh position={[0, roofY, cabinZ]} scale={[car.width * (suv ? .43 : .4), suv ? .33 : .3, cabinLength * .3]}>
+          {suv ? <boxGeometry args={[1, 1, 1]} /> : <dodecahedronGeometry args={[1, 0]} />}
+          <meshStandardMaterial color={car.color} metalness={.68} roughness={.24} />
+        </mesh>
+        <mesh geometry={box} position={[0, roofY - .12, cabinZ - cabinLength * .28]} rotation={[.32, 0, 0]} scale={[car.width * .7, .32, .055]} material={darkGlass} />
+        <mesh geometry={box} position={[0, roofY - .12, cabinZ + cabinLength * .28]} rotation={[-.3, 0, 0]} scale={[car.width * .68, .28, .05]} material={darkGlass} />
+      </>}
+      {[-1, 1].map(side => <React.Fragment key={`side-${side}`}>
+        {!truck && <mesh geometry={box} position={[side * (car.width * .43), roofY - .13, cabinZ]} scale={[.045, suv ? .34 : .27, cabinLength * .48]} material={darkGlass} />}
+        <mesh geometry={box} position={[side * (car.width * .51), .58, 0]} scale={[.035, .12, car.length * .66]} material={chromeMaterial} />
+        <mesh geometry={wheel} position={[side * wheelX, .31, wheelFrontZ]} rotation={[0, 0, Math.PI / 2]} material={tireMaterial} />
+        <mesh geometry={wheel} position={[side * wheelX, .31, wheelBackZ]} rotation={[0, 0, Math.PI / 2]} material={tireMaterial} />
+        {[wheelFrontZ, wheelBackZ].map(wheelZ => <React.Fragment key={`rim-${wheelZ}`}>
+          <mesh position={[side * (wheelX + .075), .31, wheelZ]} rotation={[0, Math.PI / 2, 0]}><torusGeometry args={[.19, .025, 5, 12]} /><meshStandardMaterial color="#c2d0db" metalness={.94} roughness={.2} /></mesh>
+          <mesh geometry={wheel} position={[side * (wheelX + .075), .31, wheelZ]} rotation={[0, 0, Math.PI / 2]} scale={[.12, .63, .63]} material={chromeMaterial} />
+        </React.Fragment>)}
+        <mesh geometry={box} position={[side * .55, .64, -car.length * .49]} scale={[.22, .15, .06]} material={headlights} />
+        <mesh geometry={box} position={[side * .55, .68, car.length * .49]} scale={[.24, .16, .07]} material={tail} />
+        <mesh geometry={box} position={[side * (car.width * .53), 1.04, cabinZ - .04]} rotation={[0, 0, side * .1]} scale={[.14, .09, .2]} material={bodyMaterials[i % bodyMaterials.length]} />
+        <mesh position={[side * .36, .56, -car.length * .5 - 3]} rotation={[-Math.PI / 2, 0, 0]}>
+          <coneGeometry args={[1.15, 6, 10, 1, true]} />
+          <meshBasicMaterial color="#9bdfff" transparent opacity={.022} side={THREE.DoubleSide} depthWrite={false} />
+        </mesh>
+      </React.Fragment>)}
+      <mesh geometry={box} position={[0, .64, -car.length * .5]} scale={[car.width * .7, .2, .07]} material={grilleMaterial} />
+      <mesh geometry={box} position={[0, .38, -car.length * .51]} scale={[car.width * 1.04, .11, .12]} material={chromeMaterial} />
+      <mesh geometry={box} position={[0, .38, car.length * .51]} scale={[car.width * 1.04, .11, .12]} material={chromeMaterial} />
+      {truck && <mesh geometry={box} position={[0, 1.38, car.length * .29]} scale={[car.width * .86, .05, car.length * .31]} material={grilleMaterial} />}
+    </group>;
+  })}</>;
 }
 
 type MusicGenre = 'Lo-Fi' | 'Synthwave' | 'Phonk';

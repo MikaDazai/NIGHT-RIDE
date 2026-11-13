@@ -21,6 +21,13 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { PerspectiveCamera, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
+import { BikeModel } from './BikeModel';
 import './style.css';
 
 type YouTubePlayerApi = {
@@ -50,164 +57,82 @@ const motorcycleCatalog: Motorcycle[] = [
 const laneMarkOffsets = [-10, -6, -2];
 type BikeProps = { ride: React.MutableRefObject<RideState>; cameraMode: CameraMode; color: string; bikeType: BikeType; bikeModelId: string; quality: string };
 
-function Bike({ ride, cameraMode, color, bikeType, bikeModelId, quality }: BikeProps) {
-  const root = useRef<THREE.Group>(null);
-  const front = useRef<THREE.Group>(null);
-  const wheelFront = useRef<THREE.Mesh>(null);
-  const wheelBack = useRef<THREE.Mesh>(null);
-  const exhaustGlow = useRef<THREE.Mesh>(null);
-  const bodyColor = useMemo(() => new THREE.Color(color), [color]);
-  const panelColor = useMemo(() => new THREE.Color('#34404d'), []);
-  const windscreenShape = useMemo(() => {
-    const shape = new THREE.Shape();
-    shape.moveTo(-.16, 0); shape.lineTo(-.23, .22); shape.lineTo(-.17, .48);
-    shape.lineTo(.17, .48); shape.lineTo(.23, .22); shape.lineTo(.16, 0); shape.closePath();
-    return shape;
-  }, []);
-  const modelVariant = Math.max(0, motorcycleCatalog.findIndex(model => model.id === bikeModelId)) % 3;
-  // Each model gets a distinct wheelbase/stance as well as its category silhouette.
-  const frontWheelZ = [-.82, -.92, -1.02][modelVariant];
-  const rearWheelZ = [.57, .67, .77][modelVariant];
-  const barHeight = [.84, .91, .99][modelVariant];
-  const beamTarget = useMemo(() => { const target = new THREE.Object3D(); target.position.set(0, .1, -30); return target; }, []);
-  useFrame((_, dt) => {
-    if (!root.current) return;
-    const s = ride.current;
-    root.current.position.x = THREE.MathUtils.damp(root.current.position.x, s.steer, 8, dt);
-    root.current.rotation.z = THREE.MathUtils.damp(root.current.rotation.z, -s.lateralVelocity * .035, 5, dt);
-    root.current.position.y = 0.035 + Math.sin(s.distance * 0.23) * Math.min(0.018, s.speed / 10000);
-    if (front.current) front.current.rotation.y = -s.steeringAngle * 0.36;
-    const spin = s.speed * dt * 0.18;
-    if (wheelFront.current) wheelFront.current.rotation.y -= spin;
-    if (wheelBack.current) wheelBack.current.rotation.y -= spin;
-    if (exhaustGlow.current) exhaustGlow.current.visible = s.brake && s.speed > 30 && Math.sin(s.distance * 2.7) > .78;
+function Bike(props: BikeProps) {
+  return <BikeModel {...props} />;
+}
+
+function createTrafficBody(width: number, length: number) {
+  const shape = new THREE.Shape();
+  const wheelRadius = .32;
+  const frontCenter = -length * .31;
+  const rearCenter = length * .31;
+  shape.moveTo(-length * .5, .37);
+  shape.lineTo(-length * .46, .65);
+  shape.quadraticCurveTo(-length * .38, .79, -length * .22, .79);
+  shape.lineTo(length * .34, .76);
+  shape.quadraticCurveTo(length * .47, .72, length * .5, .56);
+  shape.lineTo(length * .49, .31);
+  shape.lineTo(rearCenter + wheelRadius, .27);
+  shape.quadraticCurveTo(rearCenter + wheelRadius * .8, .68, rearCenter, .68);
+  shape.quadraticCurveTo(rearCenter - wheelRadius * .8, .68, rearCenter - wheelRadius, .27);
+  shape.lineTo(frontCenter + wheelRadius, .27);
+  shape.quadraticCurveTo(frontCenter + wheelRadius * .8, .68, frontCenter, .68);
+  shape.quadraticCurveTo(frontCenter - wheelRadius * .8, .68, frontCenter - wheelRadius, .27);
+  shape.lineTo(-length * .49, .27);
+  shape.closePath();
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth: width * .88,
+    bevelEnabled: true,
+    bevelSegments: 3,
+    steps: 1,
+    bevelSize: .045,
+    bevelThickness: .045,
+    curveSegments: 8,
   });
-  const dark = '#252d37';
-  const underglowColor = ride.current.underglowColor;
-  return <group ref={root} position={[0, 0, 0]}>
-    <primitive object={beamTarget} />
-    {quality !== 'Low' && <spotLight position={[0, 1.02, -.78]} target={beamTarget} angle={.46} penumbra={.78} intensity={115} distance={48} color="#d5e5ff" />}
-    {underglowColor !== 'off' && <>
-      {quality !== 'Low' && <pointLight position={[0, .18, -.04]} color={underglowColor} intensity={3.2} distance={4.6} decay={2} />}
-      <mesh position={[0, .11, -.08]}><boxGeometry args={[.54, .025, 1.42]} /><meshBasicMaterial color={underglowColor} transparent opacity={.7} toneMapped={false} /></mesh>
-    </>}
-    <mesh position={[0, .024, .12]} rotation={[-Math.PI / 2, 0, 0]} scale={[.58, 1.12, 1]}><circleGeometry args={[1, 32]} /><meshBasicMaterial color="#02050a" transparent opacity={.4} depthWrite={false} /></mesh>
-    <mesh ref={exhaustGlow} position={[0, .58, 1.02]} rotation={[Math.PI / 2, 0, 0]} visible={false}><coneGeometry args={[.055, .24, 8]} /><meshBasicMaterial color="#55baff" toneMapped={false} /></mesh>
-    <mesh ref={wheelBack} position={[0, .39, rearWheelZ]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[.34, .34, .24, 24]} /><meshStandardMaterial color="#202832" roughness={.52} /></mesh>
-    <mesh position={[0, .39, rearWheelZ + .36]}><circleGeometry args={[.32, 24]} /><meshStandardMaterial color="#26313c" emissive="#17212b" emissiveIntensity={.35} metalness={.12} roughness={.78} /></mesh>
-    <mesh position={[0, .39, rearWheelZ + .37]}><torusGeometry args={[.205, .026, 8, 24]} /><meshStandardMaterial color="#8493a2" metalness={.75} roughness={.28} /></mesh>
-    <mesh position={[0, .39, rearWheelZ + .375]}><circleGeometry args={[.075, 16]} /><meshStandardMaterial color="#aab7c3" metalness={.72} roughness={.25} /></mesh>
-    {[-1, 1].map(side => <React.Fragment key={`rear-disc-${side}`}>
-      <mesh position={[side * .13, .39, rearWheelZ]} rotation={[0, Math.PI / 2, 0]}><torusGeometry args={[.235, .018, 6, 20]} /><meshStandardMaterial color="#b8c4cf" metalness={.92} roughness={.22} /></mesh>
-      <mesh position={[side * .14, .39, rearWheelZ]} rotation={[0, Math.PI / 2, 0]}><torusGeometry args={[.105, .018, 6, 16]} /><meshStandardMaterial color="#657483" metalness={.9} roughness={.28} /></mesh>
-      <mesh position={[side * .135, .39, frontWheelZ]} rotation={[0, Math.PI / 2, 0]}><torusGeometry args={[.255, .018, 6, 22]} /><meshStandardMaterial color="#c2cdd6" metalness={.94} roughness={.2} /></mesh>
-      <mesh position={[side * .145, .39, frontWheelZ]} rotation={[0, Math.PI / 2, 0]}><torusGeometry args={[.115, .016, 6, 16]} /><meshStandardMaterial color="#657483" metalness={.9} roughness={.26} /></mesh>
-    </React.Fragment>)}
-    <mesh ref={wheelFront} position={[0, .39, frontWheelZ]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[.34, .34, .24, 24]} /><meshStandardMaterial color="#28333e" roughness={.52} /></mesh>
-    <mesh position={[0, .4, .67]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[.22, .22, .18, 16]} /><meshStandardMaterial color="#9aa6b3" metalness={.85} roughness={.25} /></mesh>
-    <mesh position={[0, .4, frontWheelZ]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[.17, .17, .18, 16]} /><meshStandardMaterial color="#9aa6b3" metalness={.85} roughness={.25} /></mesh>
-    <mesh position={[0, .72, .43]} rotation={[.38, 0, 0]}><dodecahedronGeometry args={[.31, 1]} /><meshStandardMaterial color="#566575" emissive="#263543" emissiveIntensity={.42} metalness={.62} roughness={.32} /></mesh>
-    {/* Sculpted fairings and exposed mechanical details give each silhouette more depth. */}
-    <mesh position={[0, .79, -.47]} rotation={[modelVariant === 1 ? Math.PI / 2 - .12 : -.12, 0, 0]} scale={[1, .72 + modelVariant * .08, 1.24 + modelVariant * .12]}>
-      {modelVariant === 0 ? <sphereGeometry args={[.34, 20, 14]} /> : modelVariant === 1 ? <coneGeometry args={[.31, .72, 8]} /> : <dodecahedronGeometry args={[.34, 1]} />}
-      <meshStandardMaterial color={bodyColor} metalness={.78} roughness={.2} />
-    </mesh>
-    {modelVariant === 1 && <mesh position={[0, .69, -.83]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[.21, .31, .42, 12]} /><meshStandardMaterial color={bodyColor} metalness={.72} roughness={.24} /></mesh>}
-    {modelVariant === 2 && <mesh position={[0, .58, .33]} rotation={[0, 0, Math.PI / 2]}><torusGeometry args={[.21, .045, 8, 18]} /><meshStandardMaterial color="#b1c0cd" metalness={.84} roughness={.23} /></mesh>}
-    <mesh position={[0, .62, .1]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[.19, .23, .42, 16]} /><meshStandardMaterial color="#4a5662" metalness={.82} roughness={.32} /></mesh>
-    {[-1, 1].map(side => <React.Fragment key={`engine-${side}`}>
-      <mesh position={[side * .2, .67, .13]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[.075, .075, .26, 12]} /><meshStandardMaterial color="#4a5662" metalness={.82} roughness={.32} /></mesh>
-      <mesh position={[side * .25, .58, .5]} rotation={[.12, 0, side * -.08]}><cylinderGeometry args={[.035, .055, .68, 10]} /><meshStandardMaterial color="#778492" metalness={.9} roughness={.22} /></mesh>
-      <mesh position={[side * .48, .72, -.78]} rotation={[0, 0, side * -.22]}><cylinderGeometry args={[.025, .035, .52, 8]} /><meshStandardMaterial color="#778492" metalness={.9} roughness={.22} /></mesh>
-      <mesh position={[side * .48, .99, -1.02]} rotation={[-.18, 0, side * .08]}><boxGeometry args={[.23, .13, .1]} /><meshStandardMaterial color="#4a5662" metalness={.82} roughness={.32} /></mesh>
-    </React.Fragment>)}
-    <mesh position={[0, 1.02, -1.02]}><sphereGeometry args={[.17, 20, 12]} /><meshStandardMaterial color="#e4f3ff" emissive="#b8dcff" emissiveIntensity={5} metalness={.15} roughness={.12} /></mesh>
-    <mesh position={[0, bikeType === 'Touring' ? .9 : bikeType === 'Retro' ? .78 : .85, -.2]} rotation={[Math.PI / 2 - .12, 0, 0]}><capsuleGeometry args={[bikeType === 'Touring' ? .22 : bikeType === 'Retro' ? .24 : .17, bikeType === 'Sport' ? .72 : .54, 5, 12]} /><meshStandardMaterial color={bodyColor} emissive={bodyColor} emissiveIntensity={.14} metalness={.68} roughness={.22} /></mesh>
-    <mesh position={[0, .61, -.05]} rotation={[Math.PI / 2 + .12, 0, 0]} scale={[1, .82, 1]}><capsuleGeometry args={[.145, .48, 5, 12]} /><meshStandardMaterial color={dark} metalness={.24} roughness={.52} /></mesh>
-    {[-1, 1].map(side => <mesh key={side} position={[side * .24, .7, .42]} rotation={[.22, 0, side * .12]}><boxGeometry args={[.2, .3, .35]} /><meshStandardMaterial color={panelColor} metalness={.52} roughness={.34} /></mesh>)}
-    <mesh position={[0, .68, .83]}><boxGeometry args={[.38, .18, .18]} /><meshStandardMaterial color="#e94d61" emissive="#9d172d" emissiveIntensity={1.8} /></mesh>
-    <mesh position={[0, .69, .93]}><boxGeometry args={[.28, .045, .025]} /><meshBasicMaterial color="#ff315c" toneMapped={false} /></mesh>
-    <mesh position={[0, 1.01, -.72]}><sphereGeometry args={[.18, 16, 10]} /><meshStandardMaterial color="#dceaff" emissive="#9ebcff" emissiveIntensity={3.2} /></mesh>
-    {[-1, 1].map(side => <mesh key={`headlight-${side}`} position={[side * .105, 1.01, -1.055]}><boxGeometry args={[.105, .06, .025]} /><meshBasicMaterial color="#dcf5ff" toneMapped={false} /></mesh>)}
-    {(bikeType === 'Sport' || bikeType === 'Touring') && <mesh position={[0, 1.08, -.82]} rotation={[-.16, 0, 0]}>
-      <shapeGeometry args={[windscreenShape]} />
-      <meshPhysicalMaterial color="#8fdcff" transparent opacity={.24} roughness={.12} metalness={.28} side={THREE.DoubleSide} depthWrite={false} />
-    </mesh>}
-    {bikeType === 'Sport' && [-1, 1].map(side => <mesh key={`neon-fairing-${side}`} position={[side * .265, .72, -.7]} rotation={[0, 0, side * -.12]}>
-      <boxGeometry args={[.018, .035, .36]} /><meshBasicMaterial color={side < 0 ? '#50dfff' : '#ff4caa'} toneMapped={false} />
-    </mesh>)}
-    <group ref={front} position={[0, barHeight, -.78]}>
-      <mesh position={[0, .08, -.22]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[.035, .035, .8, 8]} /><meshStandardMaterial color="#aeb7c1" metalness={.8} /></mesh>
-      <mesh position={[0, .13, -.25]}><boxGeometry args={[.52, .06, .08]} /><meshStandardMaterial color="#1a2028" metalness={.8} /></mesh>
-      {[-1, 1].map(side => <React.Fragment key={`mirror-${side}`}>
-        <mesh position={[side * .49, .37, -.12]} rotation={[.35, 0, side * .22]}><cylinderGeometry args={[.018, .025, .34, 8]} /><meshStandardMaterial color="#778492" metalness={.9} roughness={.22} /></mesh>
-        <mesh position={[side * .51, .55, -.16]} rotation={[.25, 0, side * .22]} scale={[1.2, .55, .22]}><sphereGeometry args={[.105, 14, 8]} /><meshStandardMaterial color="#aebdcc" metalness={.92} roughness={.14} /></mesh>
-        <mesh position={[side * .49, .16, -.18]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[.045, .045, .18, 12]} /><meshStandardMaterial color="#161b22" roughness={.74} /></mesh>
-      </React.Fragment>)}
-      <mesh position={[0, .23, -.23]} rotation={[.22, 0, 0]}><boxGeometry args={[.3, .18, .04]} /><meshStandardMaterial color="#080e15" emissive="#102b42" emissiveIntensity={.55} metalness={.35} roughness={.2} /></mesh>
-      {[0, 1, 2, 3, 4].map(i => <mesh key={`rev-${i}`} position={[(i - 2) * .045, .34, -.24]}><boxGeometry args={[.025, .018, .015]} /><meshBasicMaterial color={i < 3 ? '#52d7ba' : '#ff9c63'} toneMapped={false} /></mesh>)}
-    </group>
-    <mesh position={[0, .92, .37]} rotation={[.16, 0, 0]}><boxGeometry args={[.34, .05, .22]} /><meshStandardMaterial color="#090c11" /></mesh>
-    <group visible={cameraMode !== 'cockpit'}>
-      <mesh position={[0, .97, .2]} rotation={[-.18, 0, 0]}><capsuleGeometry args={[.145, .2, 5, 10]} /><meshStandardMaterial color="#202833" roughness={.82} /></mesh>
-      <mesh position={[0, 1.27, .08]} rotation={[-.24, 0, 0]}><capsuleGeometry args={[.165, .3, 6, 12]} /><meshStandardMaterial color="#252d38" emissive="#10151d" emissiveIntensity={.12} roughness={.78} /></mesh>
-      <mesh position={[0, 1.62, -.015]} scale={[1, .94, .92]}><sphereGeometry args={[.165, 18, 14]} /><meshStandardMaterial color="#111a26" emissive="#172638" emissiveIntensity={.18} metalness={.52} roughness={.2} /></mesh>
-      <mesh position={[0, 1.62, -.165]} scale={[.76, .48, .32]}><sphereGeometry args={[.12, 16, 10]} /><meshStandardMaterial color="#27445c" metalness={.58} roughness={.16} /></mesh>
-      <mesh position={[0, 1.49, -.105]} rotation={[-.12, 0, 0]}><dodecahedronGeometry args={[.13, 0]} /><meshStandardMaterial color="#202a37" metalness={.62} roughness={.28} /></mesh>
-      <mesh position={[0, 1.665, -.205]} scale={[1.05, .16, .15]}><boxGeometry args={[.18, .035, .035]} /><meshBasicMaterial color="#65eaff" toneMapped={false} /></mesh>
-      <mesh position={[0, 1.34, -.015]}><boxGeometry args={[.25, .035, .1]} /><meshStandardMaterial color="#91b9dc" emissive="#274660" emissiveIntensity={.65} metalness={.3} roughness={.28} /></mesh>
-      {[-1, 1].map(side => <React.Fragment key={side}>
-        <mesh position={[side * .2, 1.2, -.015]} rotation={[0, 0, side * -.12]} scale={[1.15, .85, .9]}><dodecahedronGeometry args={[.15, 1]} /><meshStandardMaterial color="#364352" metalness={.42} roughness={.48} /></mesh>
-        <mesh position={[side * .26, 1.31, .025]} scale={[1.05, .9, .9]}><sphereGeometry args={[.072, 12, 10]} /><meshStandardMaterial color="#4a5967" roughness={.68} /></mesh>
-        <mesh position={[side * .34, 1.2, -.16]} rotation={[-.62, 0, side * .18]}><capsuleGeometry args={[.061, .24, 4, 8]} /><meshStandardMaterial color="#4a5967" roughness={.7} /></mesh>
-        <mesh position={[side * .29, 1.03, -.5]} rotation={[-1.08, 0, side * .08]}><capsuleGeometry args={[.057, .29, 4, 8]} /><meshStandardMaterial color="#52616d" roughness={.66} /></mesh>
-        <mesh position={[side * .245, .91, -.76]}><sphereGeometry args={[.06, 10, 8]} /><meshStandardMaterial color="#151d26" roughness={.6} /></mesh>
-        <mesh position={[side * .245, .72, .04]} rotation={[-2.44, 0, side * .08]}><capsuleGeometry args={[.105, .45, 5, 8]} /><meshStandardMaterial color="#333d48" roughness={.76} /></mesh>
-        <mesh position={[side * .3, .46, -.16]} rotation={[0, 0, side * .08]}><boxGeometry args={[.17, .095, .3]} /><meshStandardMaterial color="#111820" roughness={.7} /></mesh>
-      </React.Fragment>)}
-    </group>
-    {bikeType === 'Touring' && <>
-      <mesh position={[-.36, .74, .44]}><boxGeometry args={[.3, .4, .42]} /><meshStandardMaterial color={bodyColor} metalness={.45} roughness={.38} /></mesh>
-      <mesh position={[.36, .74, .44]}><boxGeometry args={[.3, .4, .42]} /><meshStandardMaterial color={bodyColor} metalness={.45} roughness={.38} /></mesh>
-      <mesh position={[0, 1.16, -.62]} rotation={[-.2, 0, 0]}><boxGeometry args={[.5, .32, .05]} /><meshStandardMaterial color="#8ea3ba" transparent opacity={.35} roughness={.15} /></mesh>
-    </>}
-    {bikeType === 'Retro' && <>
-      <mesh position={[0, .99, -.76]} rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[.22, .035, 8, 20]} /><meshStandardMaterial color="#c5a86b" metalness={.8} roughness={.2} /></mesh>
-      <mesh position={[0, .74, -.22]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[.055, .055, .54, 12]} /><meshStandardMaterial color="#b5a27d" metalness={.6} roughness={.35} /></mesh>
-    </>}
-    {bikeType === 'Naked' && <mesh position={[0, 1.08, -.62]}><boxGeometry args={[.32, .13, .18]} /><meshStandardMaterial color="#252d35" metalness={.6} roughness={.3} /></mesh>}
-    {bikeType === 'Sport' && <>
-      {[-1, 1].map(side => <React.Fragment key={`sport-cowl-${side}`}>
-        <mesh position={[side * .31, .73, -.58]} rotation={[0, 0, side * -.16]} scale={[.78, 1, 1.35]}><dodecahedronGeometry args={[.28, 1]} /><meshStandardMaterial color={bodyColor} metalness={.82} roughness={.19} /></mesh>
-        <mesh position={[side * .24, .66, -.99]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[.085, .14, .36, 8]} /><meshStandardMaterial color="#111923" metalness={.45} roughness={.32} /></mesh>
-      </React.Fragment>)}
-      <mesh position={[0, .66, .92]} rotation={[Math.PI / 2, 0, 0]}><coneGeometry args={[.18, .46, 7]} /><meshStandardMaterial color={bodyColor} metalness={.78} roughness={.2} /></mesh>
-      <mesh position={[0, 1.08, -.67]} rotation={[-.18, 0, 0]}><boxGeometry args={[.3, .2, .12]} /><meshStandardMaterial color="#182330" transparent opacity={.72} metalness={.36} roughness={.14} /></mesh>
-    </>}
-    {bikeType === 'Naked' && <>
-      {[-1, 1].map(side => <React.Fragment key={`frame-${side}`}>
-        <mesh position={[side * .22, .79, -.19]} rotation={[.12, 0, side * -.51]}><cylinderGeometry args={[.025, .025, .63, 6]} /><meshStandardMaterial color={color} metalness={.72} roughness={.3} /></mesh>
-        <mesh position={[side * .22, .59, .14]} rotation={[0, 0, side * .48]}><cylinderGeometry args={[.024, .024, .58, 6]} /><meshStandardMaterial color={color} metalness={.72} roughness={.3} /></mesh>
-        <mesh position={[side * .31, .65, -.56]} rotation={[0, 0, side * -.18]}><boxGeometry args={[.16, .36, .25]} /><meshStandardMaterial color="#4a5662" metalness={.78} roughness={.38} /></mesh>
-      </React.Fragment>)}
-      <mesh position={[0, 1.05, -.76]}><boxGeometry args={[.46, .09, .12]} /><meshStandardMaterial color="#222a33" metalness={.55} roughness={.4} /></mesh>
-    </>}
-    {bikeType === 'Touring' && <>
-      <mesh position={[0, 1.05, -.72]} rotation={[-.12, 0, 0]}><dodecahedronGeometry args={[.39, 1]} /><meshStandardMaterial color={bodyColor} metalness={.7} roughness={.25} /></mesh>
-      {[-1, 1].map(side => <mesh key={`tour-case-${side}`} position={[side * .66, .77, .39]} rotation={[0, 0, side * -.04]}><boxGeometry args={[.36, .49, .64]} /><meshStandardMaterial color={bodyColor} metalness={.68} roughness={.28} /></mesh>)}
-      <mesh position={[0, 1.29, -.66]} rotation={[-.12, 0, 0]}><boxGeometry args={[.58, .5, .055]} /><meshStandardMaterial color="#a8c3da" transparent opacity={.27} metalness={.32} roughness={.12} /></mesh>
-    </>}
-    {bikeType === 'Retro' && <>
-      <mesh position={[0, 1.02, -1.04]} rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[.235, .045, 10, 24]} /><meshStandardMaterial color="#c7d4df" metalness={.84} roughness={.18} /></mesh>
-      {[.67, -.92].map((z, wheelIndex) => Array.from({ length: 10 }, (_, spoke) => {
-        const angle = spoke * Math.PI / 10, radius = .21, y = .39 + Math.cos(angle) * radius, spokeZ = z + Math.sin(angle) * radius;
-        return <mesh key={`spoke-${wheelIndex}-${spoke}`} position={[0, y, spokeZ]} rotation={[angle, 0, 0]}><cylinderGeometry args={[.008, .008, radius * 2, 5]} /><meshStandardMaterial color="#9facb7" metalness={.9} roughness={.22} /></mesh>;
-      }))}
-      <mesh position={[0, .79, .24]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[.085, .085, .58, 12]} /><meshStandardMaterial color="#b5a27d" metalness={.7} roughness={.28} /></mesh>
-      <mesh position={[0, .95, -.25]}><boxGeometry args={[.37, .1, .4]} /><meshStandardMaterial color="#181b1e" roughness={.78} /></mesh>
-    </>}
-    {cameraMode === 'cockpit' && <mesh position={[0, 1.13, -.5]} rotation={[.16, 0, 0]}><boxGeometry args={[.38, .12, .08]} /><meshStandardMaterial color="#161d27" metalness={.6} /></mesh>}
-  </group>;
+  const position = geometry.getAttribute('position');
+  for (let i = 0; i < position.count; i++) {
+    const longitudinal = position.getX(i);
+    const vertical = position.getY(i);
+    const lateral = position.getZ(i) - width * .44;
+    position.setXYZ(i, lateral, vertical, longitudinal);
+  }
+  position.needsUpdate = true;
+  geometry.computeVertexNormals();
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+function createTrafficCabin(width: number, depth: number, roofHeight: number, truck: boolean) {
+  const shape = new THREE.Shape();
+  const lowerHeight = truck ? .78 : roofHeight - .34;
+  shape.moveTo(-depth * .53, lowerHeight);
+  shape.lineTo(-depth * .39, roofHeight - .08);
+  shape.quadraticCurveTo(-depth * .32, roofHeight, -depth * .2, roofHeight);
+  shape.lineTo(depth * .25, roofHeight);
+  shape.quadraticCurveTo(depth * .37, roofHeight, depth * .44, roofHeight - .12);
+  shape.lineTo(depth * .53, lowerHeight);
+  shape.closePath();
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth: width * .78,
+    bevelEnabled: true,
+    bevelSegments: 2,
+    steps: 1,
+    bevelSize: .035,
+    bevelThickness: .035,
+  });
+  const position = geometry.getAttribute('position');
+  for (let i = 0; i < position.count; i++) {
+    const longitudinal = position.getX(i);
+    const vertical = position.getY(i);
+    const lateral = position.getZ(i) - width * .39;
+    position.setXYZ(i, lateral, vertical, longitudinal);
+  }
+  position.needsUpdate = true;
+  geometry.computeVertexNormals();
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+  return geometry;
 }
 
 function placeInstance(mesh: THREE.InstancedMesh | null, index: number, x: number, y: number, z: number, dummy: THREE.Object3D) {
@@ -226,9 +151,13 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
   const sideMarks = useRef<THREE.InstancedMesh>(null);
   const lampMasts = useRef<THREE.InstancedMesh>(null);
   const lampHeads = useRef<THREE.InstancedMesh>(null);
+  const lampPools = useRef<THREE.InstancedMesh>(null);
   const treeTrunks = useRef<THREE.InstancedMesh>(null);
   const forestCanopies = useRef<THREE.InstancedMesh>(null);
   const cityCanopies = useRef<THREE.InstancedMesh>(null);
+  const hazardMarkers = useRef<THREE.InstancedMesh>(null);
+  const tunnelShells = useRef<THREE.InstancedMesh>(null);
+  const tunnelNeons = useRef<THREE.InstancedMesh>(null);
   const segmentLength = 12;
   const tunnelShellGeometry = useMemo(() => {
     const pieces = [
@@ -273,10 +202,62 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
     return texture;
   }, []);
   const asphaltGeometry = useMemo(() => new THREE.BoxGeometry(21, .18, segmentLength), []);
-  const railGeometry = useMemo(() => new THREE.BoxGeometry(.3, .52, segmentLength), []);
+  const railGeometry = useMemo(() => {
+    const shape = new THREE.Shape();
+    shape.moveTo(-.26, 0); shape.lineTo(.26, 0); shape.lineTo(.18, .16);
+    shape.lineTo(.14, .5); shape.lineTo(-.14, .5); shape.lineTo(-.18, .16);
+    shape.closePath();
+    const geometry = new THREE.ExtrudeGeometry(shape, { depth: segmentLength, bevelEnabled: true, bevelSegments: 2, bevelSize: .025, bevelThickness: .025 });
+    geometry.translate(0, 0, -segmentLength / 2);
+    return geometry;
+  }, []);
   const shoulderGeometry = useMemo(() => new THREE.BoxGeometry(.05, .012, segmentLength), []);
   const centerMarkGeometry = useMemo(() => new THREE.BoxGeometry(.11, .018, 2.2), []);
   const sideMarkGeometry = useMemo(() => new THREE.BoxGeometry(.075, .018, 2.2), []);
+  const hazardMarkerGeometry = useMemo(() => new THREE.BoxGeometry(.12, .16, .035), []);
+  const hazardMarkerMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#ffc969', emissive: '#ff9e38', emissiveIntensity: 1.7, metalness: .12, roughness: .32 }), []);
+  const lampPoolTexture = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 128;
+    const context = canvas.getContext('2d');
+    if (context) {
+      const gradient = context.createRadialGradient(64, 64, 6, 64, 64, 62);
+      gradient.addColorStop(0, 'rgba(177, 210, 255, .2)');
+      gradient.addColorStop(.42, 'rgba(120, 166, 224, .1)');
+      gradient.addColorStop(1, 'rgba(70, 114, 173, 0)');
+      context.fillStyle = gradient;
+      context.fillRect(0, 0, 128, 128);
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+  }, []);
+  const lampPoolGeometry = useMemo(() => {
+    const geometry = new THREE.PlaneGeometry(7.5, 11);
+    geometry.rotateX(-Math.PI / 2);
+    return geometry;
+  }, []);
+  const lampPoolMaterial = useMemo(() => new THREE.MeshBasicMaterial({
+    map: lampPoolTexture, transparent: true, opacity: .8, depthWrite: false,
+    blending: THREE.AdditiveBlending, toneMapped: false,
+  }), [lampPoolTexture]);
+  const highwaySignTextures = useMemo(() => ['DOWNTOWN  /  12 KM', 'COASTAL ROUTE  →', 'TUNNEL 500 M'].map((text, index) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 768; canvas.height = 144;
+    const context = canvas.getContext('2d');
+    if (context) {
+      context.fillStyle = '#071521'; context.fillRect(0, 0, canvas.width, canvas.height);
+      context.strokeStyle = index === 1 ? '#ffc266' : '#58dfff'; context.lineWidth = 6;
+      context.strokeRect(7, 7, canvas.width - 14, canvas.height - 14);
+      context.fillStyle = '#eef9ff'; context.font = '600 48px monospace';
+      context.textAlign = 'center'; context.textBaseline = 'middle';
+      context.shadowColor = index === 1 ? '#ffae4d' : '#45dcff'; context.shadowBlur = 15;
+      context.fillText(text, canvas.width / 2, canvas.height / 2);
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+  }), []);
   const centerMarkMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#e3d4bc', emissive: '#879bad', emissiveIntensity: .2, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }), []);
   const sideMarkMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#c7d1d7', emissive: '#879bad', emissiveIntensity: .2, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }), []);
   // The 1,152 m ring covers 60 m behind and over 1,000 m ahead of the rider.
@@ -285,6 +266,8 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
   const batchZ = useMemo(() => segments.map(segment => segment.z), [segments]);
   const batchActive = useMemo(() => Array.from({ length: segments.length }, () => false), [segments]);
   const batchInitialized = useRef(false);
+  const tunnelSegments = useMemo(() => segments.filter(segment => segment.seed % 24 >= 12), [segments]);
+  const tunnelInitialized = useRef(false);
   const lamps = useMemo(() => Array.from({ length: ringLength / 6 }, (_, i) => ({ z: -i * 6 - 5, side: i % 2 ? -1 : 1 })), [ringLength]);
   const trees = useMemo(() => Array.from({ length: ringLength / 4.8 }, (_, i) => ({ z: -(i * 4.8 + 2), side: i % 2 ? -1 : 1, h: 2.1 + (i * 17 % 9) / 10 })), [ringLength]);
   const lampZ = useMemo(() => lamps.map(lamp => lamp.z), [lamps]);
@@ -321,6 +304,18 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
       if (segment.position.z > 72) segment.position.z -= Math.ceil((segment.position.z - 72) / ringLength) * ringLength;
       segment.visible = segment.position.z >= -aheadBuffer - segmentLength && segment.position.z <= 72;
     }
+    if (travel !== 0 || !tunnelInitialized.current) {
+      tunnelSegments.forEach((segment, index) => {
+        const node = segmentRefs.current[segment.seed];
+        const active = !!node && node.visible;
+        const z = node ? node.position.z - 6 : 0;
+        placeInstance(tunnelShells.current, index, 0, active ? 0 : -1000, z, dummy);
+        placeInstance(tunnelNeons.current, index, 0, active ? 0 : -1000, z, dummy);
+      });
+      if (tunnelShells.current) tunnelShells.current.instanceMatrix.needsUpdate = true;
+      if (tunnelNeons.current) tunnelNeons.current.instanceMatrix.needsUpdate = true;
+      tunnelInitialized.current = true;
+    }
     let instanceMatricesDirty = !batchInitialized.current;
     for (let i = 0; i < segments.length; i++) {
       let z = batchZ[i] + (batchRoot.current?.position.z ?? 0), recycled = false;
@@ -334,8 +329,11 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
         placeInstance(asphaltTiles.current, i, 0, active ? -.04 : y, localZ - 5.5, dummy);
         for (let side = 0; side < 2; side++) {
           const sign = side === 0 ? -1 : 1, index = i * 2 + side;
-          placeInstance(guardrails.current, index, sign * 10.75, active ? .2 : y, localZ - 5.5, dummy);
+          placeInstance(guardrails.current, index, sign * 10.75, active ? .035 : y, localZ - 5.5, dummy);
           placeInstance(shoulderStrips.current, index, sign * 10.48, active ? .012 : y, localZ - 5.5, dummy);
+          for (let marker = 0; marker < 2; marker++) {
+            placeInstance(hazardMarkers.current, i * 4 + side * 2 + marker, sign * 10.49, active ? .34 : y, localZ + (marker ? 3 : -3), dummy);
+          }
         }
         for (let mark = 0; mark < 3; mark++) {
           const markZ = localZ + laneMarkOffsets[mark];
@@ -348,7 +346,7 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
       }
     }
     batchInitialized.current = true;
-    if (instanceMatricesDirty) for (const mesh of [asphaltTiles.current, guardrails.current, shoulderStrips.current, centerMarks.current, sideMarks.current]) if (mesh) mesh.instanceMatrix.needsUpdate = true;
+    if (instanceMatricesDirty) for (const mesh of [asphaltTiles.current, guardrails.current, shoulderStrips.current, centerMarks.current, sideMarks.current, hazardMarkers.current]) if (mesh) mesh.instanceMatrix.needsUpdate = true;
     const forest = environment === 'Forest Highway' || environment === 'Mountain Pass';
     const nextTreeMode = forest ? `forest:${environment}` : 'city';
     const treeModeChanged = treeMode.current !== nextTreeMode;
@@ -363,6 +361,7 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
         const lamp = lamps[i], localZ = lampZ[i], y = active ? 0 : -1000;
         dummy.position.set(lamp.side * 11.8, active ? 2.8 : y, localZ); dummy.scale.set(1, 1, 1); dummy.rotation.set(0, 0, 0); dummy.updateMatrix(); lampMasts.current?.setMatrixAt(i, dummy.matrix);
         dummy.position.set(lamp.side * 11.05, active ? 5.58 : y, localZ); dummy.scale.set(1, 1, 1); dummy.rotation.set(0, 0, lamp.side * .1); dummy.updateMatrix(); lampHeads.current?.setMatrixAt(i, dummy.matrix);
+        placeInstance(lampPools.current, i, lamp.side * 7.5, active ? .061 : y, localZ, dummy);
         lampActive[i] = active; lampDirty = true;
       }
     }
@@ -380,7 +379,7 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
         treeActive[i] = inBuffer; treeDirty = true;
       }
     }
-    if (lampDirty) { if (lampMasts.current) lampMasts.current.instanceMatrix.needsUpdate = true; if (lampHeads.current) lampHeads.current.instanceMatrix.needsUpdate = true; }
+    if (lampDirty) { if (lampMasts.current) lampMasts.current.instanceMatrix.needsUpdate = true; if (lampHeads.current) lampHeads.current.instanceMatrix.needsUpdate = true; if (lampPools.current) lampPools.current.instanceMatrix.needsUpdate = true; }
     if (treeDirty) for (const mesh of [treeTrunks.current, forestCanopies.current, cityCanopies.current]) if (mesh) mesh.instanceMatrix.needsUpdate = true;
     propsInitialized.current = true;
   });
@@ -396,22 +395,45 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
       <instancedMesh ref={asphaltTiles} args={[asphaltGeometry, asphaltMaterial, segments.length]} frustumCulled={false} />
       <instancedMesh ref={guardrails} args={[railGeometry, railMaterial, segments.length * 2]} frustumCulled={false} />
       <instancedMesh ref={shoulderStrips} args={[shoulderGeometry, shoulderMaterial, segments.length * 2]} frustumCulled={false} />
+      <instancedMesh ref={hazardMarkers} args={[hazardMarkerGeometry, hazardMarkerMaterial, segments.length * 4]} frustumCulled={false} />
       <instancedMesh ref={centerMarks} args={[centerMarkGeometry, centerMarkMaterial, segments.length * 3]} frustumCulled={false} />
       <instancedMesh ref={sideMarks} args={[sideMarkGeometry, sideMarkMaterial, segments.length * 6]} frustumCulled={false} />
     </group>
+    <instancedMesh ref={tunnelShells} args={[tunnelShellGeometry, tunnelShellMaterial, tunnelSegments.length]} frustumCulled={false} />
+    <instancedMesh ref={tunnelNeons} args={[tunnelNeonGeometry, tunnelNeonMaterial, tunnelSegments.length]} frustumCulled={false} />
     {segments.map(({ z, seed }, index) => <group key={seed} ref={node => { segmentRefs.current[index] = node; }} position={[0, 0, z]}>
-      {seed % 24 >= 12 && <group position={[0, 0, -6]}>
-        <mesh geometry={tunnelShellGeometry} material={tunnelShellMaterial} />
-        <mesh geometry={tunnelNeonGeometry} material={tunnelNeonMaterial} />
-      </group>}
       {seed % 24 === 12 && <group position={[0, 0, 0]}>
         <mesh position={[0, 7.55, 0]}><boxGeometry args={[23.4, .72, .78]} /><meshStandardMaterial color="#101827" metalness={.72} roughness={.28} /></mesh>
         {[-1, 1].map(side => <mesh key={`entry-pillar-${side}`} position={[side * 11.25, 3.7, 0]}><boxGeometry args={[.62, 7.4, .82]} /><meshStandardMaterial color="#182233" metalness={.6} roughness={.36} /></mesh>)}
         <mesh position={[0, 7.54, .41]}><planeGeometry args={[9.5, 1.65]} /><meshBasicMaterial map={tunnelSignTextures[Math.floor(seed / 24) % tunnelSignTextures.length]} toneMapped={false} /></mesh>
         {[-1, 1].map(side => <mesh key={`entry-marker-${side}`} position={[side * 10.85, 4.4, .44]}><boxGeometry args={[.12, 1.35, .035]} /><meshBasicMaterial color={side < 0 ? '#ffbd4a' : '#ff4d66'} toneMapped={false} /></mesh>)}
       </group>}
-      {isCity && <mesh position={[(seed % 2 ? 1 : -1) * (14 + seed % 5), 3.3, -12]}><boxGeometry args={[2.6, 6.6 + seed % 5, 2.4]} /><meshStandardMaterial color="#101b2b" emissive={seed % 3 ? '#07172b' : '#31184b'} emissiveIntensity={.45} /></mesh>}
-      {isCity && seed % 4 === 1 && <group position={[seed % 2 ? -12.5 : 12.5, 0, -8]}>
+      {seed % 48 === 0 && <group position={[0, 0, -3]}>
+        {[-1, 1].map(side => <mesh key={`gantry-post-${side}`} position={[side * 9.9, 2.65, 0]} rotation={[0, 0, side * -.08]}>
+          <cylinderGeometry args={[.095, .14, 5.3, 8]} />
+          <meshStandardMaterial color="#596675" metalness={.75} roughness={.3} />
+        </mesh>)}
+        <mesh position={[0, 5.15, 0]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[.075, .075, 19.8, 8]} />
+          <meshStandardMaterial color="#7f8e9d" metalness={.82} roughness={.24} />
+        </mesh>
+        <mesh position={[0, 5.73, .1]}>
+          <planeGeometry args={[6.9, 1.15]} />
+          <meshBasicMaterial map={highwaySignTextures[Math.floor(seed / 48) % highwaySignTextures.length]} toneMapped={false} />
+        </mesh>
+      </group>}
+      {seed % 96 === 0 && <group position={[16, 0, -11]}>
+        <mesh position={[0, 1.15, 0]}><boxGeometry args={[5.2, 2.3, 3.8]} /><meshStandardMaterial color="#182533" metalness={.32} roughness={.58} /></mesh>
+        <mesh position={[0, 2.38, 0]}><boxGeometry args={[5.55, .22, 4.05]} /><meshStandardMaterial color="#273342" metalness={.58} roughness={.35} /></mesh>
+        <mesh position={[0, 1.22, -1.94]}><planeGeometry args={[3.5, 1.05]} /><meshBasicMaterial color="#7de8ed" toneMapped={false} /></mesh>
+        <mesh position={[0, 2.53, -1.95]}><boxGeometry args={[3.7, .07, .05]} /><meshBasicMaterial color="#ff72b7" toneMapped={false} /></mesh>
+        {[-1.45, 0, 1.45].map(x => <mesh key={`station-pump-${x}`} position={[x, .48, 2.35]}>
+          <boxGeometry args={[.48, .9, .45]} />
+          <meshStandardMaterial color="#c0cbd5" emissive="#43cde0" emissiveIntensity={.42} metalness={.25} roughness={.4} />
+        </mesh>)}
+      </group>}
+      {isCity && seed % 4 === 1 && <mesh position={[(seed % 2 ? 1 : -1) * (14 + seed % 5), 4.2, -12]}><boxGeometry args={[2.6, 8.4 + seed % 5, 2.4]} /><meshStandardMaterial color="#101b2b" emissive={seed % 3 ? '#07172b' : '#31184b'} emissiveIntensity={.45} /></mesh>}
+      {isCity && seed % 8 === 1 && <group position={[seed % 2 ? -12.5 : 12.5, 0, -8]}>
         <mesh position={[0, 2.2, 0]}><cylinderGeometry args={[.045, .07, 4.4, 6]} /><meshStandardMaterial color="#363c48" metalness={.7} /></mesh>
         <mesh position={[0, 4.35, 0]}><boxGeometry args={[2.8, 1.25, .16]} /><meshStandardMaterial color="#121a2a" emissive={seed % 3 ? '#17364e' : '#4c174a'} emissiveIntensity={1.4} metalness={.36} roughness={.3} /></mesh>
         <mesh position={[0, 4.35, -.1]}><boxGeometry args={[2.45, .035, .03]} /><meshBasicMaterial color={seed % 2 ? '#69d9ea' : '#ed82bb'} toneMapped={false} /></mesh>
@@ -429,6 +451,7 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
       <instancedMesh ref={lampHeads} args={[undefined, undefined, lamps.length]}>
         <boxGeometry args={[1.5, .1, .18]} /><meshStandardMaterial color="#c5d8ff" emissive="#9abaff" emissiveIntensity={3.4} />
       </instancedMesh>
+      <instancedMesh ref={lampPools} args={[lampPoolGeometry, lampPoolMaterial, lamps.length]} frustumCulled={false} />
       {(() => {
       const forest = environment === 'Forest Highway' || environment === 'Mountain Pass';
       return <>
@@ -448,8 +471,9 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
 }
 
 function World({ ride, cameraMode, color, bikeType, bikeModelId, environment, weather, timeOfDay, quality, fpsReadout }: BikeProps & { environment: string; weather: string; timeOfDay: string; fpsReadout: React.MutableRefObject<HTMLDivElement | null> }) {
-  const { gl } = useThree();
+  const { gl, scene, size } = useThree();
   const camera = useRef<THREE.PerspectiveCamera>(null);
+  const composer = useRef<EffectComposer | null>(null);
   const lookTarget = useMemo(() => new THREE.Vector3(), []);
     const aimTarget = useMemo(() => new THREE.Vector3(), []);
     const cinematicClock = useRef(0);
@@ -459,6 +483,30 @@ function World({ ride, cameraMode, color, bikeType, bikeModelId, environment, we
   const flash = useRef(0);
   const frameStats = useRef({ frames: 0, seconds: 0 });
   const fogColor = weather === 'Fog' ? '#536273' : timeOfDay === 'Blue hour' ? '#172d49' : timeOfDay === 'Sunset' ? '#513743' : '#080812';
+  useEffect(() => {
+    const activeCamera = camera.current;
+    if (quality === 'Low' || !activeCamera) return;
+    const effects = new EffectComposer(gl);
+    effects.setPixelRatio(quality === 'High' ? gl.getPixelRatio() : Math.min(gl.getPixelRatio(), 1));
+    effects.setSize(size.width, size.height);
+    effects.addPass(new RenderPass(scene, activeCamera));
+    effects.addPass(new UnrealBloomPass(
+      new THREE.Vector2(size.width, size.height),
+      quality === 'High' ? .3 : .19,
+      .38,
+      .82,
+    ));
+    const vignette = new ShaderPass(VignetteShader);
+    vignette.uniforms.offset.value = .3;
+    vignette.uniforms.darkness.value = .48;
+    effects.addPass(vignette);
+    effects.addPass(new OutputPass());
+    composer.current = effects;
+    return () => {
+      effects.dispose();
+      composer.current = null;
+    };
+  }, [gl, scene, size.height, size.width, quality]);
   useFrame((_, dt) => {
     frameStats.current.frames++;
     frameStats.current.seconds += dt;
@@ -498,7 +546,7 @@ function World({ ride, cameraMode, color, bikeType, bikeModelId, environment, we
         aimTarget.set(bikeX, 1, -13);
       }
     } else {
-      lookTarget.set(bikeX - ride.current.lateralVelocity * (chase ? .018 : .006), (chase ? 2.55 : 1.68) + Math.sin(ride.current.distance * .42) * Math.min(.009, ride.current.speed / 18000), chase ? 6.4 : -1.35);
+      lookTarget.set(bikeX - ride.current.lateralVelocity * (chase ? .018 : .006), (chase ? 2.55 : 1.48) + Math.sin(ride.current.distance * .42) * Math.min(.009, ride.current.speed / 18000), chase ? 6.4 : .58);
       aimTarget.set(bikeX, chase ? .88 : 1.32, chase ? -5.5 : -16);
     }
     const inTunnelCinematic = cinematic && ride.current.tunnelActive;
@@ -527,7 +575,10 @@ function World({ ride, cameraMode, color, bikeType, bikeModelId, environment, we
       }
     }
     c.lookAt(aimTarget);
-    c.fov = THREE.MathUtils.damp(c.fov, cinematic ? 56 : 67 + ride.current.speed * .11, 2, dt);
+    const targetLean = cinematic ? 0 : THREE.MathUtils.clamp(-ride.current.lateralVelocity * .012, -.12, .12);
+    c.rotation.z = THREE.MathUtils.damp(c.rotation.z, targetLean, 3.2, dt);
+    const speedFov = 67 + THREE.MathUtils.clamp(ride.current.speed / 230 * 9, 0, 9);
+    c.fov = THREE.MathUtils.damp(c.fov, cinematic ? 56 : speedFov, 2, dt);
     // Speed increases the visible pre-generated horizon; fog hides the pool's distant boundary.
     c.far = quality === 'Low' ? 440 : THREE.MathUtils.clamp(620 + ride.current.speed * .9, 620, 830);
     c.updateProjectionMatrix();
@@ -535,10 +586,25 @@ function World({ ride, cameraMode, color, bikeType, bikeModelId, environment, we
     flash.current=Math.max(0,flash.current-dt*3.2);
     if(lightning.current) lightning.current.intensity=flash.current*24;
   });
+  useFrame(() => {
+    if (!camera.current) return;
+    if (!composer.current) {
+      gl.render(scene, camera.current);
+      return;
+    }
+    const autoReset = gl.info.autoReset;
+    gl.info.autoReset = false;
+    gl.info.reset();
+    try {
+      composer.current.render();
+    } finally {
+      gl.info.autoReset = autoReset;
+    }
+  }, 1);
   return <>
     <PerspectiveCamera ref={camera} makeDefault position={[0, 2.35, 5.8]} fov={67} near={.1} far={830} />
     <color attach="background" args={[fogColor]} />
-    <fogExp2 attach="fog" args={[fogColor, weather === 'Fog' ? .017 : quality === 'Low' ? .012 : .008]} />
+    <fogExp2 attach="fog" args={[fogColor, weather === 'Fog' ? .017 : quality === 'Low' ? .012 : .0075]} />
     <ambientLight intensity={timeOfDay === 'Sunrise' ? .56 : .34} color={timeOfDay === 'Sunset' ? '#ffb99c' : '#9bb5da'} />
     <hemisphereLight args={['#253957', '#0a0c10', .48]} />
     <directionalLight position={[-8, 12, -18]} intensity={timeOfDay === 'Sunrise' ? 1.2 : .24} color={timeOfDay === 'Sunrise' ? '#ffd7ac' : '#99b7f5'} />
@@ -612,6 +678,15 @@ function Traffic({ ride, density, audioContext, masterGain, environmentVolume, t
   const grilleMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#111820', metalness: .58, roughness: .34 }), []);
   const vehicleTypes = ['sedan', 'coupe', 'suv', 'truck'] as const;
   const models = useMemo(() => Array.from({ length: count }, (_, i) => ({ lane: i % 2 === 0 ? 2.5 + (Math.floor(i / 2) % 2) * 5 : -2.5 - (Math.floor(i / 2) % 2) * 5, z: -22 - (i * 19) % 115, speed: i % 2 === 0 ? 55 + (i * 13) % 65 : 78 + (i * 11) % 40, vehicleType: vehicleTypes[i % vehicleTypes.length], width: [1.72, 1.76, 1.92, 2.02][i % 4], length: [4.05, 3.72, 4.8, 6.2][i % 4], color: palette[i % palette.length], opposing: i % 2 === 1 })), [count]);
+  const bodyGeometries = useMemo(() => models.map(car => createTrafficBody(car.width, car.length)), [models]);
+  const cabinGeometries = useMemo(() => models.map(car => {
+    const truck = car.vehicleType === 'truck';
+    const suv = car.vehicleType === 'suv';
+    const coupe = car.vehicleType === 'coupe';
+    const cabinLength = truck ? 2.25 : suv ? 2.5 : coupe ? 1.85 : 2.2;
+    const roofHeight = truck || suv ? 1.78 : coupe ? 1.36 : 1.48;
+    return createTrafficCabin(car.width, cabinLength, roofHeight, truck);
+  }), [models]);
   const currentSpeeds = useRef<number[]>([]);
   if (currentSpeeds.current.length !== models.length) currentSpeeds.current = models.map(car => car.speed);
   const snapshot = useMemo(() => Array.from({ length: count }, () => ({ x: 0, z: 0, opposing: false })), [count]);
@@ -621,6 +696,8 @@ function Traffic({ ride, density, audioContext, masterGain, environmentVolume, t
       const group = groups.current[i];
       if (!group) return;
       const previousZ = group.position.z;
+      group.position.y = .025 + Math.sin(ride.current.distance * .045 + i * 1.7) * .022;
+      group.rotation.z = Math.sin(ride.current.distance * .035 + i) * .004;
       // In the road-relative coordinate system, same-direction traffic ahead has a
       // smaller Z. Match its speed as the gap closes and clamp the minimum bumper gap.
       let targetSpeed = car.speed;
@@ -665,16 +742,13 @@ function Traffic({ ride, density, audioContext, masterGain, environmentVolume, t
     const roofY = truck || suv ? 1.78 : coupe ? 1.36 : 1.48;
     const wheelX = car.width * .48, wheelFrontZ = -car.length * .31, wheelBackZ = car.length * .31;
     return <group key={`${density}-${i}`} ref={el => { if (el) groups.current[i] = el; }} position={[car.lane, 0, car.z]} rotation={[0, car.opposing ? Math.PI : 0, 0]}>
-      <mesh geometry={box} position={[0, .63, 0]} scale={[car.width, .58, car.length * .94]} material={bodyMaterials[i % bodyMaterials.length]} />
-      <mesh geometry={box} position={[0, .96, -car.length * .3]} scale={[car.width * .94, .16, car.length * .29]} material={bodyMaterials[i % bodyMaterials.length]} />
-      {!truck && <mesh geometry={box} position={[0, .91, car.length * .34]} scale={[car.width * .9, .13, car.length * .2]} material={bodyMaterials[i % bodyMaterials.length]} />}
+      <mesh geometry={bodyGeometries[i]} material={bodyMaterials[i % bodyMaterials.length]} />
       {truck ? <>
-        <mesh geometry={box} position={[0, roofY - .12, cabinZ]} scale={[car.width * .82, .74, cabinLength * .68]} material={bodyMaterials[i % bodyMaterials.length]} />
+        <mesh geometry={cabinGeometries[i]} position={[0, 0, cabinZ]} material={bodyMaterials[i % bodyMaterials.length]} />
         <mesh geometry={box} position={[0, 1.05, car.length * .29]} scale={[car.width * .94, .8, car.length * .38]} material={bodyMaterials[(i + 2) % bodyMaterials.length]} />
         <mesh geometry={box} position={[0, 1.48, car.length * .29]} scale={[car.width * .9, .08, car.length * .35]} material={chromeMaterial} />
       </> : <>
-        <mesh position={[0, roofY, cabinZ]} scale={[car.width * (suv ? .43 : .4), suv ? .33 : .3, cabinLength * .3]}>
-          {suv ? <boxGeometry args={[1, 1, 1]} /> : <dodecahedronGeometry args={[1, 0]} />}
+        <mesh geometry={cabinGeometries[i]} position={[0, 0, cabinZ]}>
           <meshStandardMaterial color={car.color} metalness={.68} roughness={.24} />
         </mesh>
         <mesh geometry={box} position={[0, roofY - .12, cabinZ - cabinLength * .28]} rotation={[.32, 0, 0]} scale={[car.width * .7, .32, .055]} material={darkGlass} />
@@ -1095,6 +1169,7 @@ function App() {
       <World ride={ride} cameraMode={screen === 'ride' || screen === 'pause' ? cameraMode : 'chase'} color={color} bikeType={bikeType} bikeModelId={bikeModelId} environment={environment} weather={weather} timeOfDay={timeOfDay} quality={quality} fpsReadout={fpsReadout} />
       <Traffic ride={ride} density={trafficDensity} audioContext={audioContextRef} masterGain={masterGainRef} environmentVolume={environmentVolume} trafficSnapshot={trafficRef} quality={quality} />
     </Canvas>
+    <div className={`windStreaks ${displaySpeed > 125 ? 'active' : ''}`} aria-hidden="true" />
     <div className="vignette" />
     {fpsDebug && <div ref={fpsReadout} style={{ position: 'absolute', zIndex: 20, left: 12, bottom: 12, padding: '5px 8px', color: '#c9e5ff', background: '#08111acc', border: '1px solid #ffffff30', font: '11px monospace', pointerEvents: 'none' }}>MEASURING FPS</div>}
     {hud && autoNotice && <div className="autoNotice" role="status">{autoNotice}</div>}
@@ -1102,6 +1177,11 @@ function App() {
     {screen==='menu' && <section className="menu overlay"><div className="eyebrow">A NIGHT RIDE EXPERIENCE</div><h1>NIGHT<span>RIDE</span></h1><p className="tagline">Find your quiet in the distance.</p><button className="primary" onClick={begin}>Start riding <span>GO</span></button><div className="menuLinks"><button onClick={openGarage}>Garage & customization</button><button onClick={openSettings}>Ride setup & music</button></div><div className="menuFoot">PROCEDURAL WORLDS · YOUR OWN SOUNDTRACK</div></section>}
     {(screen==='ride'||screen==='pause') && hud && <>
       <aside className="speed"><div className="speedNum"><span ref={speedReadout}>{displaySpeed}</span><small> KM/H</small></div><div className="meter"><i ref={speedMeter} style={{width:'0%'}} /></div><div className="rpm"><span>ENGINE LOAD</span><b ref={engineLoadReadout}>{displayLoad}%</b></div></aside>
+      {screen === 'ride' && cameraMode === 'cockpit' && <div className="cockpitDash" role="img" aria-label={`Cockpit dashboard: ${displaySpeed} kilometers per hour, engine load ${displayLoad} percent`}>
+        <div className="cockpitDashLabel"><span>{selectedBike.name.toUpperCase()}</span><span>RIDE / 01</span></div>
+        <div className="cockpitDashReadout"><strong>{String(displaySpeed).padStart(3, '0')}</strong><small>KM/H</small><span>{displayLoad}% <i>LOAD</i></span></div>
+        <div className="cockpitDashRpm" aria-hidden="true">{Array.from({ length: 12 }, (_, index) => <i key={index} className={index < Math.ceil(displayLoad / 100 * 12) ? 'lit' : ''} />)}</div>
+      </div>}
       <nav className="minimalControls" aria-label="Ride controls">
         <span className="brand">NIGHT<span>RIDE</span></span>
           <button onClick={()=>setCameraMode(v=>v==='cockpit'?'chase':'cockpit')}>CAMERA <b>{cameraMode==='chase'?'3RD':cameraMode==='cockpit'?'1ST':'CINE'}</b></button>

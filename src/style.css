@@ -31,6 +31,25 @@
 
 @media (min-width:561px) and (max-width:900px){.minimalControls{flex-wrap:nowrap;gap:4px}.minimalControls>.brand{margin:0;padding:0 3px;font-size:10px}.minimalControls>button{padding:6px 7px;font-size:8px}.minimalControls .miniPlayer{flex:1 1 auto;min-width:0;order:0;gap:4px}.minimalControls .miniTrack{min-width:72px}.minimalControls .miniTrack small{display:none}.minimalControls .miniTrack .trackTitle{max-width:clamp(90px,18vw,170px);font-size:8px}.minimalControls .musicVolume input{width:36px}.minimalControls .hudHint{display:none}}
 
+.windStreaks{position:absolute;z-index:1;inset:0;overflow:hidden;pointer-events:none;opacity:0;transition:opacity .8s ease}
+.windStreaks.active{opacity:.42}
+.windStreaks:before,.windStreaks:after{content:'';position:absolute;top:11%;bottom:9%;width:13%;filter:blur(.5px);background:repeating-linear-gradient(174deg,transparent 0 7%,rgba(161,208,255,.2) 7.1% 7.25%,transparent 7.4% 12%);mask-image:linear-gradient(90deg,black,transparent)}
+.windStreaks:before{left:0;animation:windFlow 1.3s linear infinite}
+.windStreaks:after{right:0;transform:scaleX(-1);animation:windFlow 1.05s linear infinite}
+@keyframes windFlow{from{background-position:0 -80px;opacity:.3}to{background-position:0 80px;opacity:.8}}
+.cockpitDash{position:absolute;z-index:2;left:50%;bottom:12%;width:210px;padding:10px 14px 12px;transform:translateX(-50%) perspective(420px) rotateX(7deg);border:1px solid rgba(98,226,228,.48);background:linear-gradient(145deg,rgba(8,21,30,.9),rgba(4,11,17,.82));box-shadow:0 0 24px rgba(58,212,220,.12),inset 0 0 18px rgba(58,212,220,.08);backdrop-filter:blur(8px);pointer-events:none}
+.cockpitDashLabel,.cockpitDashReadout{display:flex;align-items:center;justify-content:space-between;font:8px 'DM Mono',monospace;letter-spacing:.14em;color:#78bfc9}
+.cockpitDashReadout{height:48px;justify-content:flex-start;gap:8px;color:#a6f8e9}
+.cockpitDashReadout strong{font:300 43px/.95 'DM Mono',monospace;letter-spacing:-.08em;color:#a6f8e9;text-shadow:0 0 14px rgba(80,255,225,.45)}
+.cockpitDashReadout small{align-self:flex-end;margin-bottom:8px;font-size:8px}
+.cockpitDashReadout span{margin-left:auto;font-size:9px;color:#e3b478}
+.cockpitDashReadout span i{font-style:normal;font-size:7px;color:#72949a}
+.cockpitDashRpm{display:flex;gap:4px;height:7px}
+.cockpitDashRpm i{flex:1;background:#17323a;border:1px solid #264a52;transition:background .12s,box-shadow .12s}
+.cockpitDashRpm i.lit{background:#57dfc6;box-shadow:0 0 8px #48d9c477}
+.cockpitDashRpm i:nth-last-child(-n+2).lit{background:#ff6683;box-shadow:0 0 8px #ff668377}
+@media(max-width:700px){.cockpitDash{bottom:15%;width:185px;padding:8px 11px 9px}.cockpitDashReadout{height:42px}.cockpitDashReadout strong{font-size:37px}}
+
 .genreSelector{width:88px;min-width:72px;height:30px;padding:0 5px;border:1px solid #ffffff28;border-radius:2px;background:rgba(12,20,31,.82);color:#dce7f5;font:8px 'DM Mono',monospace;letter-spacing:.05em;}
 .genreSelector:focus{outline:1px solid #9dbfe866;}
 @media (min-width:561px) and (max-width:900px){.genreSelector{width:72px;min-width:65px;font-size:7px;padding:0 3px}.minimalControls .miniPlayer{gap:3px}.minimalControls .musicVolume span{display:none}}

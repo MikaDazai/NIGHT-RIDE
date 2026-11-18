@@ -27,7 +27,9 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { BikeModel } from './BikeModel';
+import { createVehicleInstance, disposeVehicleInstance, trafficModelUrls, useExternalGltf } from './ExternalVehicleModels';
 import './style.css';
 
 type YouTubePlayerApi = {
@@ -140,6 +142,56 @@ function placeInstance(mesh: THREE.InstancedMesh | null, index: number, x: numbe
   dummy.position.set(x, y, z); dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1); dummy.updateMatrix(); mesh.setMatrixAt(index, dummy.matrix);
 }
 
+function createAsphaltMaps() {
+  const size = 128;
+  const heights = new Uint8Array(size * size);
+  const normalData = new Uint8Array(size * size * 4);
+  const roughnessData = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const index = y * size + x;
+      const grain = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+      const noise = grain - Math.floor(grain);
+      const grooves = Math.sin((x + Math.sin(y * .08) * 4) * .28) * 8;
+      heights[index] = Math.round(112 + noise * 74 + grooves);
+      const roughness = Math.round(190 + noise * 60);
+      roughnessData.set([roughness, roughness, roughness, 255], index * 4);
+    }
+  }
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const index = y * size + x;
+      const left = heights[y * size + (x + size - 1) % size];
+      const right = heights[y * size + (x + 1) % size];
+      const up = heights[((y + size - 1) % size) * size + x];
+      const down = heights[((y + 1) % size) * size + x];
+      const nx = (left - right) * .07;
+      const ny = (up - down) * .07;
+      const length = Math.sqrt(nx * nx + ny * ny + 1);
+      const offset = index * 4;
+      normalData[offset] = Math.round((nx / length * .5 + .5) * 255);
+      normalData[offset + 1] = Math.round((ny / length * .5 + .5) * 255);
+      normalData[offset + 2] = Math.round((1 / length * .5 + .5) * 255);
+      normalData[offset + 3] = 255;
+    }
+  }
+  const makeTexture = (data: Uint8Array, format: THREE.PixelFormat) => {
+    const texture = new THREE.DataTexture(data, size, size, format);
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(5, 3);
+    texture.magFilter = THREE.LinearFilter;
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.generateMipmaps = true;
+    texture.colorSpace = THREE.NoColorSpace;
+    texture.needsUpdate = true;
+    return texture;
+  };
+  return {
+    normal: makeTexture(normalData, THREE.RGBAFormat),
+    roughness: makeTexture(roughnessData, THREE.RGBAFormat),
+  };
+}
+
 function Road({ ride, environment, weather, quality }: { ride: React.MutableRefObject<RideState>; environment: string; weather: string; quality: string }) {
   const segmentRefs = useRef<(THREE.Group | null)[]>([]);
   const batchRoot = useRef<THREE.Group>(null);
@@ -201,6 +253,11 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
     texture.wrapS = texture.wrapT = THREE.RepeatWrapping; texture.repeat.set(5, 3); texture.colorSpace = THREE.SRGBColorSpace; texture.needsUpdate = true;
     return texture;
   }, []);
+  const asphaltMaps = useMemo(createAsphaltMaps, []);
+  useEffect(() => () => {
+    asphaltMaps.normal.dispose();
+    asphaltMaps.roughness.dispose();
+  }, [asphaltMaps]);
   const asphaltGeometry = useMemo(() => new THREE.BoxGeometry(21, .18, segmentLength), []);
   const railGeometry = useMemo(() => {
     const shape = new THREE.Shape();
@@ -386,7 +443,19 @@ function Road({ ride, environment, weather, quality }: { ride: React.MutableRefO
   const isCity = environment === 'Neon City';
   const isCoast = environment === 'Coastal Road';
   const rain = weather.includes('Rain') || weather === 'Thunderstorm';
-  const asphaltMaterial = useMemo(() => new THREE.MeshStandardMaterial({ map: asphaltTexture, color: rain ? '#647484' : '#737e8c', roughness: quality === 'Low' ? .94 : rain ? .15 : .86, metalness: quality === 'Low' ? .02 : rain ? .3 : .12, emissive: rain && quality !== 'Low' ? '#101d2e' : '#000000', emissiveIntensity: rain && quality !== 'Low' ? .32 : 0 }), [asphaltTexture, rain, quality]);
+  const asphaltMaterial = useMemo(() => new THREE.MeshPhysicalMaterial({
+    map: asphaltTexture,
+    normalMap: quality === 'Low' ? null : asphaltMaps.normal,
+    normalScale: new THREE.Vector2(rain ? .12 : .08, rain ? .12 : .08),
+    roughnessMap: quality === 'Low' ? null : asphaltMaps.roughness,
+    color: rain ? '#465461' : '#737e8c',
+    roughness: quality === 'Low' ? .94 : rain ? .3 : .88,
+    metalness: quality === 'Low' ? .02 : rain ? .16 : .12,
+    clearcoat: quality !== 'Low' && rain ? .58 : 0,
+    clearcoatRoughness: .18,
+    emissive: rain && quality !== 'Low' ? '#101d2e' : '#000000',
+    emissiveIntensity: rain && quality !== 'Low' ? .32 : 0,
+  }), [asphaltMaps, asphaltTexture, rain, quality]);
   const railMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#505963', metalness: .7, roughness: .4 }), []);
   const shoulderMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#c5d2dc', emissive: '#7394b5', emissiveIntensity: rain ? .5 : .12 }), [rain]);
   return <group>
@@ -483,6 +552,27 @@ function World({ ride, cameraMode, color, bikeType, bikeModelId, environment, we
   const flash = useRef(0);
   const frameStats = useRef({ frames: 0, seconds: 0 });
   const fogColor = weather === 'Fog' ? '#536273' : timeOfDay === 'Blue hour' ? '#172d49' : timeOfDay === 'Sunset' ? '#513743' : '#080812';
+  useEffect(() => {
+    const previousEnvironment = scene.environment;
+    const previousIntensity = scene.environmentIntensity;
+    const generator = new THREE.PMREMGenerator(gl);
+    const room = new RoomEnvironment();
+    const environment = generator.fromScene(room, .04);
+    room.traverse(object => {
+      if (object instanceof THREE.Mesh) {
+        object.geometry.dispose();
+        for (const material of Array.isArray(object.material) ? object.material : [object.material]) material.dispose();
+      }
+    });
+    scene.environment = environment.texture;
+    scene.environmentIntensity = .48;
+    generator.dispose();
+    return () => {
+      scene.environment = previousEnvironment;
+      scene.environmentIntensity = previousIntensity;
+      environment.dispose();
+    };
+  }, [gl, scene]);
   useEffect(() => {
     const activeCamera = camera.current;
     if (quality === 'Low' || !activeCamera) return;
@@ -662,9 +752,31 @@ function Rain({ ride, intensity }: { ride: React.MutableRefObject<RideState>; in
 }
 
 type TrafficSnapshot = { x: number; z: number; opposing: boolean }[];
+
+function ExternalTrafficModel({ source, length, color, ride, speedRef, index, opposing }: {
+  source: THREE.Group;
+  length: number;
+  color: string;
+  ride: React.MutableRefObject<RideState>;
+  speedRef: React.MutableRefObject<number[]>;
+  index: number;
+  opposing: boolean;
+}) {
+  const instance = useMemo(() => createVehicleInstance(source, { length, color }), [source, length, color]);
+  useEffect(() => () => disposeVehicleInstance(instance.root), [instance]);
+  useFrame((_, dt) => {
+    const spin = (speedRef.current[index] ?? ride.current.speed) * dt * (opposing ? -.24 : .24);
+    instance.wheels.forEach(wheel => { wheel.rotation.x += spin; });
+  });
+  return <primitive object={instance.root} dispose={null} />;
+}
+
 function Traffic({ ride, density, audioContext, masterGain, environmentVolume, trafficSnapshot, quality }: { ride: React.MutableRefObject<RideState>; density: 'Off' | 'Low' | 'Medium' | 'High'; audioContext: React.MutableRefObject<AudioContext | null>; masterGain: React.MutableRefObject<GainNode | null>; environmentVolume: number; trafficSnapshot: React.MutableRefObject<TrafficSnapshot>; quality: string }) {
   const requestedCount = density === 'Off' ? 0 : density === 'Low' ? 3 : density === 'Medium' ? 6 : 10;
   const count = quality === 'Low' ? Math.min(requestedCount, 3) : quality === 'Medium' ? Math.min(requestedCount, 6) : requestedCount;
+  const sportsCarModel = useExternalGltf(trafficModelUrls.coupe);
+  const suvModel = useExternalGltf(trafficModelUrls.suv);
+  const pickupModel = useExternalGltf(trafficModelUrls.truck);
   const groups = useRef<THREE.Group[]>([]);
   const box = useMemo(() => new THREE.BoxGeometry(1, 1, 1), []);
   const wheel = useMemo(() => new THREE.CylinderGeometry(.28, .28, .16, 10), []);
@@ -737,11 +849,13 @@ function Traffic({ ride, density, audioContext, masterGain, environmentVolume, t
   });
   return <>{models.map((car, i) => {
     const suv = car.vehicleType === 'suv', truck = car.vehicleType === 'truck', coupe = car.vehicleType === 'coupe';
+    const carAsset = truck ? pickupModel : suv ? suvModel : sportsCarModel;
     const cabinLength = truck ? 2.25 : suv ? 2.5 : coupe ? 1.85 : 2.2;
     const cabinZ = truck ? -car.length * .23 : -car.length * .12;
     const roofY = truck || suv ? 1.78 : coupe ? 1.36 : 1.48;
     const wheelX = car.width * .48, wheelFrontZ = -car.length * .31, wheelBackZ = car.length * .31;
     return <group key={`${density}-${i}`} ref={el => { if (el) groups.current[i] = el; }} position={[car.lane, 0, car.z]} rotation={[0, car.opposing ? Math.PI : 0, 0]}>
+      <group visible={!carAsset}>
       <mesh geometry={bodyGeometries[i]} material={bodyMaterials[i % bodyMaterials.length]} />
       {truck ? <>
         <mesh geometry={cabinGeometries[i]} position={[0, 0, cabinZ]} material={bodyMaterials[i % bodyMaterials.length]} />
@@ -775,6 +889,16 @@ function Traffic({ ride, density, audioContext, masterGain, environmentVolume, t
       <mesh geometry={box} position={[0, .38, -car.length * .51]} scale={[car.width * 1.04, .11, .12]} material={chromeMaterial} />
       <mesh geometry={box} position={[0, .38, car.length * .51]} scale={[car.width * 1.04, .11, .12]} material={chromeMaterial} />
       {truck && <mesh geometry={box} position={[0, 1.38, car.length * .29]} scale={[car.width * .86, .05, car.length * .31]} material={grilleMaterial} />}
+      </group>
+      {carAsset && <ExternalTrafficModel
+        source={carAsset}
+        length={car.length}
+        color={car.color}
+        ride={ride}
+        speedRef={currentSpeeds}
+        index={i}
+        opposing={car.opposing}
+      />}
     </group>;
   })}</>;
 }
@@ -1165,7 +1289,7 @@ function App() {
   const changeGenre=(genre: MusicGenre)=>{setMusicGenre(genre);if(!tracks.length){startAudio();setMusicOn(true);setYoutubePanelOpen(true);setYoutubeState('loading')}};
   const stepTrack=(direction:number)=>{if(tracks.length){setTrackIndex(i=>(i+direction+tracks.length)%tracks.length);setMusicOn(true)}};
   return <main className="app" onPointerDownCapture={()=>{if(screen==='menu'){startAudio();setMusicOn(true)}}}>
-    <Canvas dpr={quality==='Low'?[.6,.85]:quality==='Medium'?[1,1.2]:[1,1.5]} gl={{ antialias: quality === 'High', powerPreference:'high-performance' }}>
+    <Canvas dpr={quality==='Low'?[.6,.85]:quality==='Medium'?[1,1.2]:[1,1.5]} gl={{ antialias: quality === 'High', powerPreference:'high-performance' }} onCreated={({ gl }) => { gl.toneMapping = THREE.ACESFilmicToneMapping; gl.toneMappingExposure = .92; gl.outputColorSpace = THREE.SRGBColorSpace; }}>
       <World ride={ride} cameraMode={screen === 'ride' || screen === 'pause' ? cameraMode : 'chase'} color={color} bikeType={bikeType} bikeModelId={bikeModelId} environment={environment} weather={weather} timeOfDay={timeOfDay} quality={quality} fpsReadout={fpsReadout} />
       <Traffic ride={ride} density={trafficDensity} audioContext={audioContextRef} masterGain={masterGainRef} environmentVolume={environmentVolume} trafficSnapshot={trafficRef} quality={quality} />
     </Canvas>

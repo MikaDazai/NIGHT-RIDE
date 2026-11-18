@@ -1,7 +1,8 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { createVehicleInstance, disposeVehicleInstance, motorbikeModelUrl, useExternalGltf } from './ExternalVehicleModels';
 
 export type BikeRideState = {
   speed: number;
@@ -185,6 +186,13 @@ export function BikeModel({ ride, cameraMode, color, bikeType, bikeModelId, qual
   const dashTexture = useRef<THREE.CanvasTexture | null>(null);
   const dashElapsed = useRef(0);
   const idleClock = useRef(0);
+  const motorcycleSource = useExternalGltf(motorbikeModelUrl);
+  const externalMotorcycle = useMemo(() => motorcycleSource
+    ? createVehicleInstance(motorcycleSource, { length: 1.8, color, motorcycle: true })
+    : null, [motorcycleSource, color]);
+  useEffect(() => () => {
+    if (externalMotorcycle) disposeVehicleInstance(externalMotorcycle.root);
+  }, [externalMotorcycle]);
   const paint = useMemo(() => new THREE.MeshPhysicalMaterial({
     color, metalness: .72, roughness: .2, clearcoat: 1, clearcoatRoughness: .12,
     emissive: new THREE.Color(color).multiplyScalar(.045),
@@ -293,6 +301,7 @@ export function BikeModel({ ride, cameraMode, color, bikeType, bikeModelId, qual
     const spin = state.speed * dt * .19;
     if (frontWheel.current) frontWheel.current.rotation.x -= spin;
     if (rearWheel.current) rearWheel.current.rotation.x -= spin;
+    externalMotorcycle?.wheels.forEach(wheel => { wheel.rotation.x -= state.speed * dt * .7; });
     if (torso.current) torso.current.rotation.x = -.025 + Math.sin(idleClock.current * 1.3) * .008 + Math.sin(state.distance * .035) * .006;
     rpmSegments.current.forEach((segment, index) => {
       if (segment) {
@@ -339,6 +348,7 @@ export function BikeModel({ ride, cameraMode, color, bikeType, bikeModelId, qual
       {quality !== 'Low' && <pointLight position={[0, .16, 0]} color={underglow} intensity={2.2} distance={4.5} />}
       <mesh position={[0, .09, -.02]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[.74, 1.8]} /><meshBasicMaterial color={underglow} transparent opacity={.28} depthWrite={false} toneMapped={false} /></mesh>
     </>}
+    <group visible={!externalMotorcycle}>
     <Wheel front z={frontZ} wheelRef={frontWheel} />
     <Wheel front={false} z={rearZ} wheelRef={rearWheel} />
     {frameGeometries.map((geometry, index) => <mesh key={`frame-${index}`} geometry={geometry} material={frameMaterial} />)}
@@ -413,6 +423,13 @@ export function BikeModel({ ride, cameraMode, color, bikeType, bikeModelId, qual
     <mesh position={[0, .91, .27]} rotation={[.14, 0, 0]} material={carbon}>
       <capsuleGeometry args={[.13, .32, 4, 10]} />
     </mesh>
+    </group>
+    {externalMotorcycle && <primitive object={externalMotorcycle.root} dispose={null} />}
+    {externalMotorcycle && <>
+      <mesh position={[0, .66, -.78]}><boxGeometry args={[.3, .06, .035]} /><meshBasicMaterial color="#dceeff" toneMapped={false} /></mesh>
+      {quality !== 'Low' && <pointLight position={[0, .58, -.84]} color="#c7e4ff" intensity={5} distance={12} />}
+      <mesh position={[0, .4, .78]}><boxGeometry args={[.24, .055, .035]} /><meshBasicMaterial color="#ff264b" toneMapped={false} /></mesh>
+    </>}
     <group ref={torso} visible={cameraMode !== 'cockpit'}>
       <mesh position={[0, 1.2, .13]} rotation={[-.48, 0, 0]} material={riderMaterial}>
         <capsuleGeometry args={[.17, .37, 6, 12]} />
@@ -443,7 +460,7 @@ export function BikeModel({ ride, cameraMode, color, bikeType, bikeModelId, qual
         </mesh>
       </React.Fragment>)}
     </group>
-    {bikeType === 'Naked' && <mesh position={[0, 1.05, -.76]} material={carbon}>
+    {bikeType === 'Naked' && !externalMotorcycle && <mesh position={[0, 1.05, -.76]} material={carbon}>
       <boxGeometry args={[.31, .11, .16]} />
     </mesh>}
   </group>;
